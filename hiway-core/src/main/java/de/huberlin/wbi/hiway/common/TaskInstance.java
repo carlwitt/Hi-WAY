@@ -49,9 +49,12 @@ import org.apache.hadoop.yarn.api.records.LocalResource;
 import de.huberlin.wbi.cuneiform.core.semanticmodel.ForeignLambdaExpr;
 import de.huberlin.wbi.cuneiform.core.semanticmodel.JsonReportEntry;
 
+/**
+ *
+ */
 public class TaskInstance implements Comparable<TaskInstance> {
 
-	public static class Comparators {
+	private static class Comparators {
 
 		public static Comparator<TaskInstance> DEPTH = new Comparator<TaskInstance>() {
 			@Override
@@ -81,34 +84,35 @@ public class TaskInstance implements Comparable<TaskInstance> {
 
 	}
 
-	protected static int runningId = 1;
+	private static int runningId = 1;
 
-	protected Set<TaskInstance> childTasks;
-	// the command to be executed
-	protected String command;
-	// whether this task is completed yet
-	protected boolean completed;
-	protected int depth = 0;
-	// this task instance's id
+	private final Set<TaskInstance> childTasks;
+	/** the command to be executed */
+	private String command;
+	/** whether this task is completed yet */
+	private boolean completed;
+	private int depth = 0;
+	/** this task instance's id */
 	protected final long id;
-	// input and output data
-	protected Set<Data> inputData;
+	/** input data */
+	private final Set<Data> inputData;
+	/** output data */
+	private final Set<Data> outputData;
 	private String invocScript = "";
-	// the programming language of this task (default: bash)
-	protected String languageLabel;
-	protected Set<Data> outputData;
-	// parent and child tasks (denotes the workflow structure)
-	protected Set<TaskInstance> parentTasks;
-	protected Set<JsonReportEntry> report;
-	protected long taskId;
-	// the name and (internal) id of the task's executable (e.g. tar)
-	protected String taskName;
-	// the number of times this task has been attempted
-	protected int tries = 0;
-	// the upward rank of tasks in the workflow
-	protected double upwardRank = 0d;
-	// the id of the workflow this task instance belongs to
-	protected UUID workflowId;
+	/** the programming language of this task (default: bash) */
+	private final String languageLabel;
+	/** parent and child tasks (denotes the workflow structure) */
+	private final Set<TaskInstance> parentTasks;
+	private final Set<JsonReportEntry> report;
+	private final long taskId;
+	/** the name and (internal) id of the task's executable (e.g. tar) */
+	private final String taskName;
+	/** the number of times this task has been attempted */
+	private int tries = 0;
+	/** the upward rank of tasks in the workflow */
+	private double upwardRank = 0d;
+	/** the id of the workflow this task instance belongs to */
+	private final UUID workflowId;
 
 	public TaskInstance(long id, UUID workflowId, String taskName, long taskId, String languageLabel) {
 		this.id = id;
@@ -125,11 +129,11 @@ public class TaskInstance implements Comparable<TaskInstance> {
 		this.childTasks = new HashSet<>();
 	}
 
-	public TaskInstance(UUID workflowId, String taskName, long taskId) {
+	protected TaskInstance(UUID workflowId, String taskName, long taskId) {
 		this(workflowId, taskName, taskId, ForeignLambdaExpr.LANGID_BASH);
 	}
 
-	public TaskInstance(UUID workflowId, String taskName, long taskId, String languageLabel) {
+	private TaskInstance(UUID workflowId, String taskName, long taskId, String languageLabel) {
 		this(runningId++, workflowId, taskName, taskId, languageLabel);
 	}
 
@@ -150,10 +154,14 @@ public class TaskInstance implements Comparable<TaskInstance> {
 		this.setDepth(parentTask.getDepth() + 1);
 	}
 
+	/** Writes the script file containing the task's {@link #command},
+	 * registers the script as local resource, and stages it out (?) */
 	public Map<String, LocalResource> buildScriptsAndSetResources(Container container) {
 		Map<String, LocalResource> localResources = new HashMap<>();
 		try {
 			String containerId = container.getId().toString();
+
+			// the script contains the task's command
 			File script = new File(String.valueOf(getId()));
 			try (BufferedWriter scriptWriter = new BufferedWriter(new FileWriter(script))) {
 				scriptWriter.write(getCommand());
@@ -161,6 +169,8 @@ public class TaskInstance implements Comparable<TaskInstance> {
 				e.printStackTrace(System.out);
 				System.exit(-1);
 			}
+
+			// stage out the script
 			Data scriptData = new Data(script.getPath(), containerId);
 			try {
 				scriptData.stageOut();
@@ -168,6 +178,8 @@ public class TaskInstance implements Comparable<TaskInstance> {
 				e.printStackTrace(System.out);
 				System.exit(-1);
 			}
+
+			// register script as local resource
 			scriptData.addToLocalResourceMap(localResources);
 		} catch (IOException e) {
 			e.printStackTrace(System.out);
@@ -285,7 +297,7 @@ public class TaskInstance implements Comparable<TaskInstance> {
 		completed = true;
 	}
 
-	public void setDepth(int depth) throws WorkflowStructureUnknownException {
+	protected void setDepth(int depth) throws WorkflowStructureUnknownException {
 		if (this.depth < depth) {
 			this.depth = depth;
 			for (TaskInstance child : this.getChildTasks()) {
@@ -294,7 +306,7 @@ public class TaskInstance implements Comparable<TaskInstance> {
 		}
 	}
 
-	public void setInvocScript(String invocScript) {
+	protected void setInvocScript(String invocScript) {
 		this.invocScript = invocScript;
 	}
 

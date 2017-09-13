@@ -62,11 +62,11 @@ import de.huberlin.wbi.hiway.common.TaskInstance;
  */
 public class GalaxyTaskInstance extends TaskInstance {
 	// the Galaxy tool invoked by this task instance
-	private GalaxyTool galaxyTool;
+	private final GalaxyTool galaxyTool;
 	// input data, which the task instance has to know about for determining the metadata using the Python classes provided by Galaxy
-	private Set<GalaxyData> inputs;
+	private final Set<GalaxyData> inputs;
 	// the Python script run before the actual task instance execution that is responsible for populating the tool state with metadata
-	private StringBuilder paramScript;
+	private final StringBuilder paramScript;
 	// the post script that is to be run subsequent to the actual task invocation and that may involve the moving of files from temporary fodlers to their
 	// destination
 	private String postScript;
@@ -86,17 +86,16 @@ public class GalaxyTaskInstance extends TaskInstance {
 		setInvocScript("script.sh");
 
 		// As opposed to other Hi-WAY applciation masters, the Galaxy AM ha a fairly static command that can be build at task instance creation time
-		StringBuilder commandSb = new StringBuilder();
-		commandSb.append("PYTHONPATH=" + galaxyPath + "/lib:$PYTHONPATH; export PYTHONPATH\n");
-		commandSb.append("PYTHON_EGG_CACHE=.; export PYTHON_EGG_CACHE\n");
-		commandSb.append(". " + galaxyPath + "/.venv/bin/activate\n");
-		commandSb.append("python params_" + id + ".py\n");
-		commandSb.append("deactivate\n");
-		commandSb.append("cat pre_" + id + ".sh > script.sh\n");
-		commandSb.append("echo `cheetah fill template_" + id + ".tmpl --pickle params.p -p` >> script.sh\n");
-		commandSb.append("cat post_" + id + ".sh >> script.sh\n");
-		commandSb.append("bash ").append(getInvocScript()).append("\n");
-		setCommand(commandSb.toString());
+		String commandSb = "PYTHONPATH=" + galaxyPath + "/lib:$PYTHONPATH; export PYTHONPATH\n" +
+				"PYTHON_EGG_CACHE=.; export PYTHON_EGG_CACHE\n" +
+				". " + galaxyPath + "/.venv/bin/activate\n" +
+				"python params_" + id + ".py\n" +
+				"deactivate\n" +
+				"cat pre_" + id + ".sh > script.sh\n" +
+				"echo `cheetah fill template_" + id + ".tmpl --pickle params.p -p` >> script.sh\n" +
+				"cat post_" + id + ".sh >> script.sh\n" +
+				"bash " + getInvocScript() + "\n";
+		setCommand(commandSb);
 	}
 
 	/**
@@ -286,7 +285,7 @@ public class GalaxyTaskInstance extends TaskInstance {
 		return galaxyTool;
 	}
 
-	public String getPostScript() {
+	private String getPostScript() {
 		return postScript;
 	}
 

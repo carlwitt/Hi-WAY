@@ -78,25 +78,26 @@ public abstract class WorkflowScheduler {
 
 	protected HiWayConfiguration conf;
 	protected HiwayDBI dbInterface;
-	protected FileSystem hdfs;
+	private FileSystem hdfs;
 	protected int maxRetries = 0;
-	protected Map<String, Long> maxTimestampPerHost;
-	protected int numberOfFinishedTasks = 0;
-	protected int numberOfPreviousRunTasks = 0;
+	private final Map<String, Long> maxTimestampPerHost;
+	private int numberOfFinishedTasks = 0;
+	private int numberOfPreviousRunTasks = 0;
 	protected int numberOfRemainingTasks = 0;
 	protected int numberOfRunningTasks = 0;
-	protected boolean relaxLocality = true;
-	protected Map<String, Map<Long, RuntimeEstimate>> runtimeEstimatesPerNode;
-	protected Set<Long> taskIds;
-	// a queue of nodes on which containers are to be requested
-	protected Queue<ContainerRequest> unissuedContainerRequests;
-	protected String workflowName;
-	protected int containerMemory;
+	boolean relaxLocality = true;
+	protected final Map<String, Map<Long, RuntimeEstimate>> runtimeEstimatesPerNode;
+	private final Set<Long> taskIds;
+	/** a queue of nodes on which containers are to be requested */
+	protected final Queue<ContainerRequest> unissuedContainerRequests;
+	private final String workflowName;
+	/** Default amount of memory per container. */
+	protected int containerMemoryMegaBytes;
 	protected Map<String, Integer> customMemoryMap;
-	protected int containerCores;
+	private int containerCores;
 	protected int requestPriority;
 
-	public WorkflowScheduler(String workflowName) {
+	protected WorkflowScheduler(String workflowName) {
 		this.workflowName = workflowName;
 		
 		unissuedContainerRequests = new LinkedList<>();
@@ -109,20 +110,22 @@ public abstract class WorkflowScheduler {
 	public void init(HiWayConfiguration conf_, FileSystem hdfs_, int containerMemory_, Map<String, Integer> customMemoryMap_, int containerCores_, int requestPriority_) {
 		this.conf = conf_;
 		this.hdfs = hdfs_;
-		this.containerMemory = containerMemory_;
+		this.containerMemoryMegaBytes = containerMemory_;
 		this.customMemoryMap = customMemoryMap_;
 		this.containerCores = containerCores_;
 		this.requestPriority = requestPriority_;
 	}
-	
-	protected ContainerRequest setupContainerAskForRM(String[] nodes, int memory) {
+
+	/**  */
+	protected ContainerRequest setupContainerAskForRM(String[] nodes, int memoryMegaBytes) {
 		// set the priority for the request
+
 		Priority pri = Priority.newInstance(requestPriority);
 		// pri.setPriority(requestPriority);
 
 		// set up resource type requirements
-		Resource capability = Resource.newInstance(memory, containerCores);
-		// capability.setMemory(containerMemory);
+		Resource capability = Resource.newInstance(memoryMegaBytes, containerCores);
+		// capability.setMemory(containerMemoryMegaBytes);
 		// capability.setVirtualCores(containerCores);
 
 		return new ContainerRequest(capability, nodes, null, pri, relaxLocality());
@@ -158,7 +161,7 @@ public abstract class WorkflowScheduler {
 		return new HashSet<>(runtimeEstimatesPerNode.keySet());
 	}
 
-	public int getNumberOfFinishedTasks() {
+	protected int getNumberOfFinishedTasks() {
 		return numberOfFinishedTasks - numberOfPreviousRunTasks;
 	}
 
@@ -262,7 +265,7 @@ public abstract class WorkflowScheduler {
 			runtimeEstimates.put(taskId, new RuntimeEstimate());
 		}
 		runtimeEstimatesPerNode.put(nodeId, runtimeEstimates);
-		maxTimestampPerHost.put(nodeId, 0l);
+		maxTimestampPerHost.put(nodeId, 0L);
 	}
 
 	protected void newTask(long taskId) {
@@ -276,7 +279,7 @@ public abstract class WorkflowScheduler {
 		return getNumberOfReadyTasks() == 0;
 	}
 
-	protected void parseLogs() {
+	private void parseLogs() {
 		String hdfsBaseDirectoryName = conf.get(HiWayConfiguration.HIWAY_AM_DIRECTORY_BASE, HiWayConfiguration.HIWAY_AM_DIRECTORY_BASE_DEFAULT);
 		String hdfsSandboxDirectoryName = conf.get(HiWayConfiguration.HIWAY_AM_DIRECTORY_CACHE, HiWayConfiguration.HIWAY_AM_DIRECTORY_CACHE_DEFAULT);
 		Path hdfsBaseDirectory = new Path(new Path(hdfs.getUri()), hdfsBaseDirectoryName);

@@ -1,4 +1,4 @@
-/**
+/* *
  * <p>
  * The Heterogeneity-incorporating Workflow ApplicationMaster for YARN (Hi-WAY) provides the means to execute arbitrary scientific workflows on top of <a
  * href="http://hadoop.apache.org/">Apache's Hadoop 2.2.0 (YARN)</a>. In this context, scientific workflows are directed acyclic graphs (DAGs), in which nodes
@@ -56,12 +56,16 @@ import de.huberlin.wbi.hiway.common.TaskInstance;
 /**
  * Thread to connect to the {@link ContainerManagementProtocol} and launch the container that will execute the shell command.
  */
-public class LaunchContainerRunnable implements Runnable {
+class LaunchContainerRunnable implements Runnable {
 
-	private WorkflowDriver am;
-	private Container container;
-	private NMCallbackHandler containerListener;
-	private TaskInstance task;
+	/** The Application Master */
+	private final WorkflowDriver am;
+	/** Allocated container */
+	private final Container container;
+	/** Callback handler of the container */
+	private final NMCallbackHandler containerListener;
+	/** The task to be launched */
+	private final TaskInstance task;
 
 	/**
 	 * @param lcontainer
@@ -73,7 +77,7 @@ public class LaunchContainerRunnable implements Runnable {
 	 * @param am
 	 *            The Application Master
 	 */
-	public LaunchContainerRunnable(Container lcontainer, NMCallbackHandler containerListener, TaskInstance task, WorkflowDriver am) {
+	LaunchContainerRunnable(Container lcontainer, NMCallbackHandler containerListener, TaskInstance task, WorkflowDriver am) {
 		this.container = lcontainer;
 		this.containerListener = containerListener;
 		this.task = task;
@@ -85,28 +89,28 @@ public class LaunchContainerRunnable implements Runnable {
 	 */
 	@Override
 	public void run() {
-		if (HiWayConfiguration.verbose)
-			WorkflowDriver.writeToStdout("Setting up container launch container for containerid=" + container.getId());
+		/* log */ if (HiWayConfiguration.verbose) WorkflowDriver.writeToStdout("Setting up container launch container for containerid=" + container.getId());
+
 		ContainerLaunchContext ctx = Records.newRecord(ContainerLaunchContext.class);
 
-		// Set the environment
+		// Setup the class path
 		StringBuilder classPathEnv = new StringBuilder(Environment.CLASSPATH.$()).append(File.pathSeparatorChar).append("./*");
 		for (String c : am.getConf().getStrings(YarnConfiguration.YARN_APPLICATION_CLASSPATH, YarnConfiguration.DEFAULT_YARN_APPLICATION_CLASSPATH)) {
 			classPathEnv.append(':');
 			classPathEnv.append(File.pathSeparatorChar);
 			classPathEnv.append(c.trim());
 		}
-
+		// append java class path for MINI_YARN_CLUSTER
 		if (am.getConf().getBoolean(YarnConfiguration.IS_MINI_YARN_CLUSTER, false)) {
 			classPathEnv.append(':');
 			classPathEnv.append(System.getProperty("java.class.path"));
 		}
-
 		am.getShellEnv().put("CLASSPATH", classPathEnv.toString());
 
 		// Set the environment
 		ctx.setEnvironment(am.getShellEnv());
 
+		// write the input and output file map
 		Data dataTable = new Data(task.getId() + "_data", container.getId().toString());
 		try (BufferedWriter writer = new BufferedWriter(new FileWriter(dataTable.getLocalPath().toString()))) {
 			writer.write(Integer.toString(task.getInputData().size()));
@@ -130,6 +134,7 @@ public class LaunchContainerRunnable implements Runnable {
 			System.exit(-1);
 		}
 
+		// create the script that contains the task's command
 		Map<String, LocalResource> localResources = task.buildScriptsAndSetResources(container);
 
 		try {
@@ -161,7 +166,7 @@ public class LaunchContainerRunnable implements Runnable {
 			vargs.add(HiWayConfiguration.HIWAY_WORKFLOW_LANGUAGE_DAX_WORKER_CLASS);
 		}
 
-		vargs.add("--appId " + am.getAppId().toString());
+		vargs.add("--appId " + am.getAppId());
 		vargs.add("--containerId " + container.getId().toString());
 		vargs.add("--workflowId " + task.getWorkflowId());
 		vargs.add("--taskId " + task.getTaskId());

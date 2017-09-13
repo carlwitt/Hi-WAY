@@ -19,6 +19,7 @@ public class CuneiformETaskInstance extends TaskInstance {
 		super(workflowId, taskName, Math.abs(taskName.hashCode() + 1));
 	}
 
+	/** Adds the effi request file (in addition to the script file) to the local resources, stages it out (?) */
 	@Override
 	public Map<String, LocalResource> buildScriptsAndSetResources(Container container) {
 		Map<String, LocalResource> localResources = super.buildScriptsAndSetResources(container);

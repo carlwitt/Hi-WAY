@@ -121,12 +121,12 @@ public class GalaxyApplicationMaster extends WorkflowDriver {
 	 * invoke the tools provided by Galaxy */
 	private Map<String, GalaxyDataType> galaxyDataTypes;
 	/* the path of the local Galaxy installation, as specifified in the hiway-site.xml */
-	public final String galaxyPath;
+	private final String galaxyPath;
 	/* a data structure that stores the tools of the local Galaxy installation; these tools include the library tools pre-installed in Galaxy as well as
 	 * additional tools installed via Galaxy's tool shed functionality */
 	private Map<String, Map<String, GalaxyTool>> galaxyTools;
 
-	public GalaxyApplicationMaster() {
+	private GalaxyApplicationMaster() {
 		super();
 		galaxyPath = getConf().get(HiWayConfiguration.HIWAY_GALAXY_PATH);
 		if (galaxyPath == null) {
@@ -592,7 +592,6 @@ public class GalaxyApplicationMaster extends WorkflowDriver {
 						// (b) obtain the data object and add it to the task object
 						task.addInputData(getFiles().get(idName));
 						task.addFile(input_connection_key, true, (GalaxyData) getFiles().get(idName));
-						continue;
 					}
 
 					// (c) Prepare the python script that populates the tool state with remaining parameter settings required to invoke the tool

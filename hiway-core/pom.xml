@@ -91,7 +91,12 @@
 			<version>${hadoop.version}</version>
 			<scope>provided</scope>
 		</dependency>
-	</dependencies>
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <scope>compile</scope>
+        </dependency>
+    </dependencies>
 	<build>
 		<plugins>
 			<plugin>

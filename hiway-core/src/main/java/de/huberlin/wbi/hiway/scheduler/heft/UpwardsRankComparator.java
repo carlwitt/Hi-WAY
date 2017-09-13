@@ -37,7 +37,7 @@ import java.util.Comparator;
 import de.huberlin.wbi.hiway.common.TaskInstance;
 import de.huberlin.wbi.hiway.common.WorkflowStructureUnknownException;
 
-public class UpwardsRankComparator implements Comparator<TaskInstance> {
+class UpwardsRankComparator implements Comparator<TaskInstance> {
 	@Override
 	public int compare(TaskInstance task1, TaskInstance task2) {
 		try {

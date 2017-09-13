@@ -34,7 +34,7 @@ package de.huberlin.wbi.hiway.scheduler.c3po;
 
 import de.huberlin.wbi.hiway.scheduler.Estimate;
 
-public class PlacementAwarenessEstimate extends Estimate {
+class PlacementAwarenessEstimate extends Estimate {
 	public long localData;
 	public long totalData;
 }

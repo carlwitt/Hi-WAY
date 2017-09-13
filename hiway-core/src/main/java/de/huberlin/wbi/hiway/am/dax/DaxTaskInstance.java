@@ -1,4 +1,4 @@
-/*******************************************************************************
+/* ******************************************************************************
  * In the Hi-WAY project we propose a novel approach of executing scientific
  * workflows processing Big Data, as found in NGS applications, on distributed
  * computational infrastructures. The Hi-WAY software stack comprises the func-
@@ -37,45 +37,70 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+// is not really hadoop, just the first best tool to concat paths
+import org.apache.hadoop.fs.Path;
 
 import de.huberlin.wbi.hiway.common.Data;
 import de.huberlin.wbi.hiway.common.TaskInstance;
 
 public class DaxTaskInstance extends TaskInstance {
 
-	private Map<Data, Long> fileSizes;
-	private double runtime;
+	private final Map<Data, Long> fileSizesByte;
+	private double runtimeSeconds;
+	private long peakMemoryBytes;
 
 	public DaxTaskInstance(UUID workflowId, String taskName) {
 		super(workflowId, taskName, Math.abs(taskName.hashCode() + 1));
-		fileSizes = new HashMap<>();
+		fileSizesByte = new HashMap<>();
 	}
 
 	public void addInputData(Data data, Long fileSize) {
 		super.addInputData(data);
-		fileSizes.put(data, fileSize);
+		fileSizesByte.put(data, fileSize);
 	}
 
 	public void addOutputData(Data data, Long fileSize) {
 		super.addOutputData(data);
-		fileSizes.put(data, fileSize);
+		fileSizesByte.put(data, fileSize);
 	}
 
 	@Override
 	public String getCommand() {
-		if (runtime > 0) {
-			StringBuilder sb = new StringBuilder("sleep " + runtime + "\n");
+
+		if (runtimeSeconds > 0) {
+
+//			TODO add a docker container executor to try the volume mounting
+
+			StringBuilder command = new StringBuilder();
+
+			// consume memory of the specified amount (moved to top because of parentheses not working to change priorities of & and ;)
+			// create a temp directory
+			Path tmpFsDir = new Path(getOutputData().iterator().next().getLocalBaseDir(), "inmemoryspace");
+			command.append(String.format("mkdir %s", tmpFsDir));
+			// then, mount it in memory
+			command.append(String.format(" ; mount -t tmpfs -o size=%sM tmpfs %s", (peakMemoryBytes+1000)/1000, tmpFsDir));
+			// then, write to it
+			command.append(String.format(" ; dd if=/dev/zero of=%s/zero bs=%s count=1 ", tmpFsDir, peakMemoryBytes));
+
+			// then, sleep for task execution time at least the specified amount of time (since writing files could take longer)
+			command.append(String.format(" ; sleep %ss", runtimeSeconds));
+
+			// then, unmount (after everything is done)
+			command.append(String.format(" ; umount %s", tmpFsDir));
+
+			// in parallel, write fake output files of the specified size
 			for (Data output : getOutputData()) {
-				sb.append("dd if=/dev/zero of=" + output.getLocalPath() + " bs=" + fileSizes.get(output) + " count=1\n");
+				command.append(String.format(" & dd if=/dev/zero of=%s bs=%s count=1", output.getLocalPath(), fileSizesByte.get(output) ));
 			}
-			return sb.toString();
+
+			return command.toString();
 		}
 		return super.getCommand();
 	}
 
 	@Override
 	public Set<Data> getInputData() {
-		if (runtime > 0) {
+		if (runtimeSeconds > 0) {
 			Set<Data> intermediateData = new HashSet<>();
 			for (Data input : super.getInputData()) {
 				if (input.getContainerId() != null) {
@@ -87,7 +112,11 @@ public class DaxTaskInstance extends TaskInstance {
 		return super.getInputData();
 	}
 
-	public void setRuntime(double runtime) {
-		this.runtime = runtime;
+	public void setRuntimeSeconds(double runtimeSeconds) {
+		this.runtimeSeconds = runtimeSeconds;
+	}
+
+	public void setPeakMemoryConsumption(long peakMemoryBytes){
+		this.peakMemoryBytes = peakMemoryBytes;
 	}
 }

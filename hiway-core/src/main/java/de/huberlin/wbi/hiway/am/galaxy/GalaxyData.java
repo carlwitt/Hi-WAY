@@ -42,7 +42,7 @@ import de.huberlin.wbi.hiway.common.Data;
  * @author Marc Bux
  *
  */
-public class GalaxyData extends Data {
+class GalaxyData extends Data {
 	private GalaxyDataType dataType;
 
 	public GalaxyData(Path localPath) {

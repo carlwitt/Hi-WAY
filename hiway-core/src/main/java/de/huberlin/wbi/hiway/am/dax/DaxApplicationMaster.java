@@ -1,4 +1,4 @@
-/*******************************************************************************
+/* ******************************************************************************
  * In the Hi-WAY project we propose a novel approach of executing scientific
  * workflows processing Big Data, as found in NGS applications, on distributed
  * computational infrastructures. The Hi-WAY software stack comprises the func-
@@ -65,14 +65,14 @@ public class DaxApplicationMaster extends WorkflowDriver {
 		WorkflowDriver.launch(new DaxApplicationMaster(), args);
 	}
 
-	public DaxApplicationMaster() {
+	private DaxApplicationMaster() {
 		super();
 		setDetermineFileSizes();
 	}
 
 	@Override
 	public Collection<TaskInstance> parseWorkflow() {
-		Map<Object, TaskInstance> tasks = new HashMap<>();
+
 		WorkflowDriver.writeToStdout("Parsing Pegasus DAX " + getWorkflowFile());
 
 		try {
@@ -80,90 +80,11 @@ public class DaxApplicationMaster extends WorkflowDriver {
 			Document doc = builder.parse(new File(getWorkflowFile().getLocalPath().toString()));
 			NodeList jobNds = doc.getElementsByTagName("job");
 
-			for (int i = 0; i < jobNds.getLength(); i++) {
-				Element jobEl = (Element) jobNds.item(i);
-				String id = jobEl.getAttribute("id");
-				String taskName = jobEl.getAttribute("name");
-				DaxTaskInstance task = new DaxTaskInstance(getRunId(), taskName);
-				task.setRuntime(jobEl.hasAttribute("runtime") ? Double.parseDouble(jobEl.getAttribute("runtime")) : 0d);
-				tasks.put(id, task);
+			// read all the job xml elements into task objects
+			Map<Object, TaskInstance> tasks = getJobs(jobNds);
 
-				StringBuilder arguments = new StringBuilder();
-				NodeList argumentNds = jobEl.getElementsByTagName("argument");
-				for (int j = 0; j < argumentNds.getLength(); j++) {
-					Element argumentEl = (Element) argumentNds.item(j);
-
-					NodeList argumentChildNds = argumentEl.getChildNodes();
-					for (int k = 0; k < argumentChildNds.getLength(); k++) {
-						Node argumentChildNd = argumentChildNds.item(k);
-						String argument = "";
-
-						switch (argumentChildNd.getNodeType()) {
-						case Node.ELEMENT_NODE:
-							Element argumentChildEl = (Element) argumentChildNd;
-							if (argumentChildEl.getNodeName().equals("file")) {
-								if (argumentChildEl.hasAttribute("name")) {
-									argument = argumentChildEl.getAttribute("name");
-								}
-							} else if (argumentChildEl.getNodeName().equals("filename")) {
-								if (argumentChildEl.hasAttribute("file")) {
-									argument = argumentChildEl.getAttribute("file");
-								}
-							}
-							break;
-						case Node.TEXT_NODE:
-							argument = argumentChildNd.getNodeValue().replaceAll("\\s+", " ").trim();
-							break;
-						default:
-						}
-
-						if (argument.length() > 0) {
-							arguments.append(" ").append(argument);
-						}
-					}
-				}
-
-				NodeList usesNds = jobEl.getElementsByTagName("uses");
-				for (int j = 0; j < usesNds.getLength(); j++) {
-					Element usesEl = (Element) usesNds.item(j);
-					if (usesEl.hasAttribute("type") && usesEl.getAttribute("type").compareTo("executable") == 0)
-						continue;
-					String link = usesEl.getAttribute("link");
-					String fileName = usesEl.getAttribute("file");
-					long size = usesEl.hasAttribute("size") ? Long.parseLong(usesEl.getAttribute("size")) : 0l;
-					List<String> outputs = new LinkedList<>();
-
-					switch (link) {
-					case "input":
-						if (!getFiles().containsKey(fileName)) {
-							Data data = new Data(fileName);
-							getFiles().put(fileName, data);
-						}
-						Data data = getFiles().get(fileName);
-						task.addInputData(data, size);
-						break;
-					case "output":
-						if (!getFiles().containsKey(fileName))
-							getFiles().put(fileName, new Data(fileName));
-						data = getFiles().get(fileName);
-						if (!task.getInputData().contains(data)) {
-							task.addOutputData(data, size);
-						}
-						outputs.add(fileName);
-						break;
-					default:
-					}
-
-					task.getReport().add(
-							new JsonReportEntry(task.getWorkflowId(), task.getTaskId(), task.getTaskName(), task.getLanguageLabel(),
-									Long.valueOf(task.getId()), null, JsonReportEntry.KEY_INVOC_OUTPUT, new JSONObject().put("output", outputs)));
-				}
-
-				task.setCommand(taskName + arguments.toString());
-				if (HiWayConfiguration.verbose)
-					WorkflowDriver.writeToStdout("Adding task " + task + ": " + task.getInputData() + " -> " + task.getOutputData());
-			}
-
+			// from the parsed jobs, get those declared a child of another
+			// and set the task parent accordingly
 			NodeList childNds = doc.getElementsByTagName("child");
 			for (int i = 0; i < childNds.getLength(); i++) {
 				Element childEl = (Element) childNds.item(i);
@@ -181,6 +102,7 @@ public class DaxApplicationMaster extends WorkflowDriver {
 				}
 			}
 
+			// mark those tasks without children as output tasks
 			for (TaskInstance task : tasks.values()) {
 				if (task.getChildTasks().size() == 0) {
 					for (Data data : task.getOutputData()) {
@@ -189,15 +111,111 @@ public class DaxApplicationMaster extends WorkflowDriver {
 				}
 
 				task.getReport().add(
-						new JsonReportEntry(task.getWorkflowId(), task.getTaskId(), task.getTaskName(), task.getLanguageLabel(), Long.valueOf(task.getId()),
-								null, JsonReportEntry.KEY_INVOC_SCRIPT, task.getCommand()));
+						new JsonReportEntry(task.getWorkflowId(), task.getTaskId(), task.getTaskName(), task.getLanguageLabel(), task.getId(), null, JsonReportEntry.KEY_INVOC_SCRIPT, task.getCommand()));
 			}
+
+			return tasks.values();
 
 		} catch (WorkflowStructureUnknownException | IOException | JSONException | ParserConfigurationException | SAXException e) {
 			e.printStackTrace(System.out);
 			System.exit(-1);
 		}
 
-		return tasks.values();
+		// that's what was returned in case of failure before code refactor
+		return new HashMap<Object, TaskInstance>().values();
+
+	}
+
+	private Map<Object, TaskInstance> getJobs(NodeList jobNds) throws JSONException {
+		Map<Object, TaskInstance> tasks = new HashMap<>();
+		for (int i = 0; i < jobNds.getLength(); i++) {
+            Element jobEl = (Element) jobNds.item(i);
+            String id = jobEl.getAttribute("id");
+            String taskName = jobEl.getAttribute("name");
+            DaxTaskInstance task = new DaxTaskInstance(getRunId(), taskName);
+            task.setRuntimeSeconds(jobEl.hasAttribute("runtime") ? Double.parseDouble(jobEl.getAttribute("runtime")) : 0d);
+            task.setPeakMemoryConsumption(jobEl.hasAttribute("memory_bytes") ? Long.parseLong(jobEl.getAttribute("memory_bytes")) : 0L);
+            tasks.put(id, task);
+
+            StringBuilder arguments = new StringBuilder();
+            NodeList argumentNds = jobEl.getElementsByTagName("argument");
+            for (int j = 0; j < argumentNds.getLength(); j++) {
+                Element argumentEl = (Element) argumentNds.item(j);
+
+                NodeList argumentChildNds = argumentEl.getChildNodes();
+                for (int k = 0; k < argumentChildNds.getLength(); k++) {
+                    Node argumentChildNd = argumentChildNds.item(k);
+                    String argument = "";
+
+                    switch (argumentChildNd.getNodeType()) {
+                    case Node.ELEMENT_NODE:
+                        Element argumentChildEl = (Element) argumentChildNd;
+                        if (argumentChildEl.getNodeName().equals("file")) {
+                            if (argumentChildEl.hasAttribute("name")) {
+                                argument = argumentChildEl.getAttribute("name");
+                            }
+                        } else if (argumentChildEl.getNodeName().equals("filename")) {
+                            if (argumentChildEl.hasAttribute("file")) {
+                                argument = argumentChildEl.getAttribute("file");
+                            }
+                        }
+                        break;
+                    case Node.TEXT_NODE:
+                        argument = argumentChildNd.getNodeValue().replaceAll("\\s+", " ").trim();
+                        break;
+                    default:
+                    }
+
+                    if (argument.length() > 0) {
+                        arguments.append(" ").append(argument);
+                    }
+                }
+            }
+
+            NodeList usesNds = jobEl.getElementsByTagName("uses");
+			edge(task, usesNds);
+
+			task.setCommand(taskName + arguments.toString());
+            if (HiWayConfiguration.verbose)
+                WorkflowDriver.writeToStdout("Adding getJobs " + task + ": " + task.getInputData() + " -> " + task.getOutputData());
+        }
+        return tasks;
+	}
+
+	private void edge(DaxTaskInstance task, NodeList usesNds) throws JSONException {
+		for (int j = 0; j < usesNds.getLength(); j++) {
+            Element usesEl = (Element) usesNds.item(j);
+            if (usesEl.hasAttribute("type") && usesEl.getAttribute("type").compareTo("executable") == 0)
+                continue;
+            String link = usesEl.getAttribute("link");
+            String fileName = usesEl.getAttribute("file");
+            long size = usesEl.hasAttribute("size") ? Long.parseLong(usesEl.getAttribute("size")) : 0L;
+            List<String> outputs = new LinkedList<>();
+
+            switch (link) {
+            case "input":
+                if (!getFiles().containsKey(fileName)) {
+                    Data data = new Data(fileName);
+                    getFiles().put(fileName, data);
+                }
+                Data data = getFiles().get(fileName);
+                task.addInputData(data, size);
+                break;
+            case "output":
+                if (!getFiles().containsKey(fileName))
+                    getFiles().put(fileName, new Data(fileName));
+                data = getFiles().get(fileName);
+                if (!task.getInputData().contains(data)) {
+                    task.addOutputData(data, size);
+                }
+                outputs.add(fileName);
+                break;
+            default:
+            }
+
+            task.getReport().add(
+                    new JsonReportEntry(task.getWorkflowId(), task.getTaskId(), task.getTaskName(), task.getLanguageLabel(),
+                            task.getId(), null, JsonReportEntry.KEY_INVOC_OUTPUT, new JSONObject().put("output", outputs)));
+        }
 	}
 }

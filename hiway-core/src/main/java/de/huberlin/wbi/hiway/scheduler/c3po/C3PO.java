@@ -201,24 +201,24 @@ public class C3PO extends WorkflowScheduler {
 	}
 
 	private double conservatismWeight = 1d;
-	protected Map<Long, PlacementAwarenessEstimate> dataLocalityStatistics;
+	private final Map<Long, PlacementAwarenessEstimate> dataLocalityStatistics;
 	private final DecimalFormat df;
-	protected Map<Long, OutlookEstimate> jobStatistics;
+	private final Map<Long, OutlookEstimate> jobStatistics;
 	private int nClones = 0;
 	private final Random numGen;
 	private double outlookWeight = 1d;
 	private double placementAwarenessWeight = 1d;
 	// One queue of ready-to-execute tasks for each job, identified by its unique job name.
-	protected Map<Long, Queue<TaskInstance>> readyTasks;
-	protected Map<Long, Queue<TaskInstance>> runningTasks;
-	protected Map<Long, String> taskIdToName;
-	protected Map<TaskInstance, List<Container>> taskToContainers;
+    private final Map<Long, Queue<TaskInstance>> readyTasks;
+	private final Map<Long, Queue<TaskInstance>> runningTasks;
+	private final Map<Long, String> taskIdToName;
+	private final Map<TaskInstance, List<Container>> taskToContainers;
 
 	public C3PO(String workflowName) {
 		this(workflowName, System.currentTimeMillis());
 	}
 
-	public C3PO(String workflowName, long seed) {
+	private C3PO(String workflowName, long seed) {
 		super(workflowName);
 		readyTasks = new HashMap<>();
 		runningTasks = new HashMap<>();
@@ -253,7 +253,7 @@ public class C3PO extends WorkflowScheduler {
 
 	@Override
 	public void addTaskToQueue(TaskInstance task) {
-		unissuedContainerRequests.add(setupContainerAskForRM(new String[0], containerMemory));
+		unissuedContainerRequests.add(setupContainerAskForRM(new String[0], containerMemoryMegaBytes));
 		readyTasks.get(task.getTaskId()).add(task);
 		WorkflowDriver.writeToStdout("Added task " + task + " to queue " + task.getTaskName());
 	}
@@ -448,10 +448,7 @@ public class C3PO extends WorkflowScheduler {
 
 	@Override
 	public boolean nothingToSchedule() {
-		if (nClones > 0 && getNumberOfRunningTasks() > 0) {
-			return false;
-		}
-		return getNumberOfReadyTasks() == 0;
+		return nClones <= 0 || getNumberOfRunningTasks() <= 0 && getNumberOfReadyTasks() == 0;
 	}
 
 	private void printJobStatisticsWeight() {
@@ -488,21 +485,21 @@ public class C3PO extends WorkflowScheduler {
 	private void printTaskStatisticsWeights() {
 		WorkflowDriver.writeToStdout("Updated Task Statistics:");
 
-		String row = "";
+		StringBuilder row = new StringBuilder();
 		for (long taskId : getTaskIds()) {
 			String jobName = taskIdToName.get(taskId);
 			String jobName7 = (jobName.length() > 7) ? jobName.substring(0, 7) : jobName;
-			row += "\t\t" + jobName7;
+			row.append("\t\t").append(jobName7);
 		}
-		WorkflowDriver.writeToStdout(row);
+		WorkflowDriver.writeToStdout(row.toString());
 
 		for (String nodeId : getNodeIds()) {
 			String nodeName7 = (nodeId.length() > 7) ? nodeId.substring(nodeId.length() - 7) : nodeId;
 
-			row = "";
+			row = new StringBuilder();
 			for (long taskId : getTaskIds()) {
 				RuntimeEstimate taskStatistic = runtimeEstimatesPerNode.get(nodeId).get(taskId);
-				row += "\t" + df.format(taskStatistic.averageRuntime) + "\t" + df.format(taskStatistic.weight);
+				row.append("\t").append(df.format(taskStatistic.averageRuntime)).append("\t").append(df.format(taskStatistic.weight));
 			}
 
 			WorkflowDriver.writeToStdout("\t" + nodeName7 + row);
@@ -510,11 +507,11 @@ public class C3PO extends WorkflowScheduler {
 	}
 
 	private String printWeights(Map<Long, ? extends Estimate> statistics) {
-		String names = "";
-		String weights = "";
+		StringBuilder names = new StringBuilder();
+		StringBuilder weights = new StringBuilder();
 		for (Long taskId : getTaskIds()) {
-			names += ", " + taskIdToName.get(taskId);
-			weights += ", " + df.format(statistics.get(taskId).weight);
+			names.append(", ").append(taskIdToName.get(taskId));
+			weights.append(", ").append(df.format(statistics.get(taskId).weight));
 		}
 		return "(" + names.substring(2) + ")" + "\t" + "(" + weights.substring(2) + ")";
 	}
@@ -526,7 +523,7 @@ public class C3PO extends WorkflowScheduler {
 	public void setnClones(int nClones) {
 		if (this.nClones < nClones) {
 			for (int i = 0; i < nClones - this.nClones; i++) {
-				unissuedContainerRequests.add(setupContainerAskForRM(new String[0], containerMemory));
+				unissuedContainerRequests.add(setupContainerAskForRM(new String[0], containerMemoryMegaBytes));
 			}
 		} else {
 			for (int i = 0; i < this.nClones - nClones; i++) {
@@ -555,7 +552,7 @@ public class C3PO extends WorkflowScheduler {
 		for (Container container : taskToContainers.get(task)) {
 			if (!container.getId().equals(containerStatus.getContainerId())) {
 				toBeReleasedContainers.add(container.getId());
-				unissuedContainerRequests.add(setupContainerAskForRM(new String[0], containerMemory));
+				unissuedContainerRequests.add(setupContainerAskForRM(new String[0], containerMemoryMegaBytes));
 			}
 		}
 		taskToContainers.remove(task);

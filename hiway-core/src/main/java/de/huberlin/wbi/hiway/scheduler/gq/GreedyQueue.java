@@ -50,11 +50,10 @@ import de.huberlin.wbi.hiway.scheduler.WorkflowScheduler;
  */
 public class GreedyQueue extends WorkflowScheduler {
 
-	private Queue<TaskInstance> queue;
+	private final Queue<TaskInstance> queue = new LinkedList<>();
 
 	public GreedyQueue(String workflowName) {
 		super(workflowName);
-		queue = new LinkedList<>();
 	}
 
 	@Override
@@ -66,7 +65,7 @@ public class GreedyQueue extends WorkflowScheduler {
 
 	@Override
 	public void addTaskToQueue(TaskInstance task) {
-		unissuedContainerRequests.add(setupContainerAskForRM(new String[0], containerMemory));
+		unissuedContainerRequests.add(setupContainerAskForRM(new String[0], containerMemoryMegaBytes));
 		queue.add(task);
 		WorkflowDriver.writeToStdout("Added task " + task + " to queue");
 	}

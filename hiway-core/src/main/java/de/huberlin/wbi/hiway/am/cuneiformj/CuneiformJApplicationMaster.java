@@ -64,12 +64,12 @@ public class CuneiformJApplicationMaster extends WorkflowDriver {
 		WorkflowDriver.launch(new CuneiformJApplicationMaster(), args);
 	}
 
-	private BaseCreActor creActor;
+	private final BaseCreActor creActor;
 	private BaseRepl repl;
 
 	private final TicketSrcActor ticketSrc;
 
-	public CuneiformJApplicationMaster() {
+	private CuneiformJApplicationMaster() {
 		super();
 		ExecutorService executor = Executors.newCachedThreadPool();
 
@@ -126,7 +126,7 @@ public class CuneiformJApplicationMaster extends WorkflowDriver {
 		WorkflowDriver.writeToStdout("Parsing Cuneiform workflow " + getWorkflowFile());
 		repl = new HiWayRepl(ticketSrc, this);
 
-		StringBuffer buf = new StringBuffer();
+		StringBuilder buf = new StringBuilder();
 
 		try (BufferedReader reader = new BufferedReader(new FileReader(getWorkflowFile().getLocalPath().toString()))) {
 			String line;

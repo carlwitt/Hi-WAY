@@ -1,4 +1,4 @@
-/**
+/* *
  * <p>
  * The Heterogeneity-incorporating Workflow ApplicationMaster for YARN (Hi-WAY) provides the means to execute arbitrary scientific workflows on top of <a
  * href="http://hadoop.apache.org/">Apache's Hadoop 2.2.0 (YARN)</a>. In this context, scientific workflows are directed acyclic graphs (DAGs), in which nodes
@@ -50,14 +50,14 @@ import de.huberlin.wbi.cuneiform.core.semanticmodel.JsonReportEntry;
 import de.huberlin.wbi.hiway.common.HiWayConfiguration;
 import de.huberlin.wbi.hiway.common.TaskInstance;
 
-public class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
+class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 
-	private WorkflowDriver am;
-	// a data structure storing the invocation launched by each container
-	private Map<ContainerId, HiWayInvocation> containerIdToInvocation = new HashMap<>();
+	private final WorkflowDriver am;
+	/** a data structure storing the invocation launched by each container **/
+	private final Map<ContainerId, HiWayInvocation> containerIdToInvocation = new HashMap<>();
 
-	// a queue for allocated containers that have yet to be assigned a task
-	private Queue<Container> containerQueue = new LinkedList<>();
+	/** a queue for allocated containers that have yet to be assigned a task **/
+	private final Queue<Container> containerQueue = new LinkedList<>();
 
 	public RMCallbackHandler(WorkflowDriver am) {
 		super();
@@ -84,11 +84,10 @@ public class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 		if (am.getScheduler() == null)
 			return 0f;
 		int totalTasks = am.getScheduler().getNumberOfTotalTasks();
-		float progress = (totalTasks == 0) ? 0 : (float) am.getNumCompletedContainers().get() / totalTasks;
-		return progress;
+		return (totalTasks == 0) ? 0 : (float) am.getNumCompletedContainers().get() / totalTasks;
 	}
 
-	protected void launchTask(TaskInstance task, Container allocatedContainer) {
+	private void launchTask(TaskInstance task, Container allocatedContainer) {
 		containerIdToInvocation.put(allocatedContainer.getId(), new HiWayInvocation(task));
 
 		LaunchContainerRunnable runnableLaunchContainer = new LaunchContainerRunnable(allocatedContainer, am.getContainerListener(), task, am);
@@ -99,7 +98,7 @@ public class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 		launchThread.start();
 	}
 
-	protected void launchTasks() {
+	private void launchTasks() {
 		while (!containerQueue.isEmpty() && !am.getScheduler().nothingToSchedule()) {
 			Container allocatedContainer = containerQueue.remove();
 
@@ -115,16 +114,20 @@ public class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 					onError(e);
 				}
 				task.getReport().add(
-						new JsonReportEntry(task.getWorkflowId(), task.getTaskId(), task.getTaskName(), task.getLanguageLabel(), Long.valueOf(task.getId()),
+						new JsonReportEntry(task.getWorkflowId(), task.getTaskId(), task.getTaskName(), task.getLanguageLabel(), task.getId(),
 								null, HiwayDBI.KEY_INVOC_TIME_SCHED, obj));
 				task.getReport().add(
-						new JsonReportEntry(task.getWorkflowId(), task.getTaskId(), task.getTaskName(), task.getLanguageLabel(), Long.valueOf(task.getId()),
+						new JsonReportEntry(task.getWorkflowId(), task.getTaskId(), task.getTaskName(), task.getLanguageLabel(), task.getId(),
 								null, HiwayDBI.KEY_INVOC_HOST, allocatedContainer.getNodeId().getHost()));
 			}
 			launchTask(task, allocatedContainer);
 		}
 	}
 
+	/**
+	 * Adds the newly arrived containers to this object's {@link RMCallbackHandler#containerQueue}.
+	 * Removes satisfied container requests from the AMs AMRMClient, releases containers for which no request was found.
+	 */
 	@SuppressWarnings("unchecked")
 	@Override
 	public void onContainersAllocated(List<Container> allocatedContainers) {
@@ -158,10 +161,13 @@ public class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 							+ request.getCapability().getMemory());
 				am.getAmRMClient().removeContainerRequest(request);
 				am.getNumAllocatedContainers().incrementAndGet();
+
+				// add to ready containers
 				containerQueue.add(container);
+
 			} else {
 				if (HiWayConfiguration.verbose)
-					WorkflowDriver.writeToStdout("Releasing container " + container.getId().getContainerId() + " on node " + container.getNodeId().getHost()
+					WorkflowDriver.writeToStdout("Releasing container due to no matching request found. ID " + container.getId().getContainerId() + " on node " + container.getNodeId().getHost()
 							+ " with capability " + container.getResource().getVirtualCores() + ":" + container.getResource().getMemory());
 				am.getAmRMClient().releaseAssignedContainer(container.getId());
 			}
@@ -170,6 +176,11 @@ public class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 		launchTasks();
 	}
 
+	/**
+	 * Reads the diagnostics string of the container and logs accordingly (e.g., force killed by YARN).
+	 * If the status is ok, looks up the invocation launched in the container and signals task success to the AM.
+	 * Then calls {@link RMCallbackHandler#launchTasks()}.
+	 */
 	@Override
 	public void onContainersCompleted(List<ContainerStatus> completedContainers) {
 		for (ContainerStatus containerStatus : completedContainers) {

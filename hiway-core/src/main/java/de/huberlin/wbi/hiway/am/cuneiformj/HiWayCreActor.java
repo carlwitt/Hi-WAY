@@ -45,9 +45,9 @@ import de.huberlin.wbi.hiway.common.Data;
 import de.huberlin.wbi.hiway.common.TaskInstance;
 
 //Cre - Cuneiform Runtime Environment
-public class HiWayCreActor extends BaseCreActor {
+class HiWayCreActor extends BaseCreActor {
 
-	private CuneiformJApplicationMaster am;
+	private final CuneiformJApplicationMaster am;
 
 	public HiWayCreActor(CuneiformJApplicationMaster am) {
 		super();

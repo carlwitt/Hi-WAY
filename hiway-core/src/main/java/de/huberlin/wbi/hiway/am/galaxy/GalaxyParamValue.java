@@ -50,7 +50,7 @@ public class GalaxyParamValue extends GalaxyParam {
 	private String from_work_dir;
 	// some parameters are set to a certain value (e.g. "true", "false"), yet in order to invoke the Galaxy tool, they have to be mapped to a different notation
 	// (e.g. "1", "0"); this map stores all the mappings for values of this parameter.
-	private Map<Object, Object> mappings;
+	private final Map<Object, Object> mappings;
 
 	public GalaxyParamValue(String name) {
 		super(name);

@@ -45,13 +45,13 @@ import org.json.JSONObject;
  * @author Marc Bux
  *
  */
-public class GalaxyDataTable {
+class GalaxyDataTable {
 	// The column names of the data table; one of these columns will always be the "value" column that identifies entries in this table
 	private final String[] columns;
 	// the comment character unique to loc files of this data table
 	private final String comment_char;
 	// The content of the data table, accessible by its value and then the name of its column
-	private Map<String, Map<String, String>> contentByValue;
+	private final Map<String, Map<String, String>> contentByValue;
 	// The name of this data table
 	private final String name;
 	// The path to this data table's loc file

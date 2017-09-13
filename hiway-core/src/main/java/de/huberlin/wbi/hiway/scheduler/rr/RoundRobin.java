@@ -60,9 +60,12 @@ public class RoundRobin extends StaticScheduler {
 	@Override
 	protected void addTask(TaskInstance task) {
 		numberOfRemainingTasks++;
+
+		// cycle nodes if empty
 		if (!nodeIterator.hasNext()) {
-			nodeIterator = queues.keySet().iterator();
+			nodeIterator = readyTasksByNode.keySet().iterator();
 		}
+
 		String node = nodeIterator.next();
 		schedule.put(task, node);
 		WorkflowDriver.writeToStdout("Task " + task + " scheduled on node " + node);
@@ -74,7 +77,7 @@ public class RoundRobin extends StaticScheduler {
 	@Override
 	public void addTasks(Collection<TaskInstance> tasks) {
 		if (nodeIterator == null) {
-			nodeIterator = queues.keySet().iterator();
+			nodeIterator = readyTasksByNode.keySet().iterator();
 		}
 		List<TaskInstance> taskList = new LinkedList<>(tasks);
 		Collections.sort(taskList, new DepthComparator());

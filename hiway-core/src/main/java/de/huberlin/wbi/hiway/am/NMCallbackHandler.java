@@ -1,4 +1,4 @@
-/**
+/* *
  * <p>
  * The Heterogeneity-incorporating Workflow ApplicationMaster for YARN (Hi-WAY) provides the means to execute arbitrary scientific workflows on top of <a
  * href="http://hadoop.apache.org/">Apache's Hadoop 2.2.0 (YARN)</a>. In this context, scientific workflows are directed acyclic graphs (DAGs), in which nodes
@@ -38,7 +38,7 @@ import org.apache.hadoop.yarn.client.api.async.NMClientAsync;
 public class NMCallbackHandler implements NMClientAsync.CallbackHandler {
 
 	private final WorkflowDriver am;
-	private ConcurrentMap<ContainerId, Container> containers = new ConcurrentHashMap<>();
+	private final ConcurrentMap<ContainerId, Container> containers = new ConcurrentHashMap<>();
 
 	public NMCallbackHandler(WorkflowDriver am) {
 		this.am = am;

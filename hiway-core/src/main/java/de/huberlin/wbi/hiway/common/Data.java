@@ -53,6 +53,7 @@ import org.apache.hadoop.yarn.util.Records;
  * A file stored locally and in HDFS. HDFS directory paths are all relative to the HDFS user directory.
  * 
  * @author Marc Bux
+ * @author Carl Witt
  */
 public class Data implements Comparable<Data> {
 	private static FileSystem hdfs;
@@ -60,7 +61,7 @@ public class Data implements Comparable<Data> {
 
 	private static Path hdfsBaseDirectory;
 
-	private static FileSystem localFs = new LocalFileSystem();
+	private static final FileSystem localFs = new LocalFileSystem();
 
 	public static void setHdfs(FileSystem hdfs) {
 		Data.hdfs = hdfs;
@@ -76,9 +77,10 @@ public class Data implements Comparable<Data> {
 
 	private String containerId;
 
-	private String fileName;
+	private final String fileName;
 
-	private Path localDirectory;
+	/** Relative path (I think) */
+	private final Path localDirectory;
 
 	// is the file output of the workflow
 	private boolean output;
@@ -87,7 +89,7 @@ public class Data implements Comparable<Data> {
 		this(localPath, null);
 	}
 
-	public Data(Path localPath, String containerId) {
+	private Data(Path localPath, String containerId) {
 		this.output = false;
 
 		this.localDirectory = localPath.getParent();
@@ -103,9 +105,11 @@ public class Data implements Comparable<Data> {
 		this(new Path(localPathString), containerId);
 	}
 
+	/** Adds this object to the given map (used in the workflow driver?). */
 	public void addToLocalResourceMap(Map<String, LocalResource> localResources) throws IOException {
 		Path dest = getHdfsPath();
 
+		// Record is a Hadoop YARN util class
 		LocalResource rsrc = Records.newRecord(LocalResource.class);
 		rsrc.setType(LocalResourceType.FILE);
 		rsrc.setVisibility(LocalResourceVisibility.APPLICATION);
@@ -152,7 +156,7 @@ public class Data implements Comparable<Data> {
 
 	@Override
 	public boolean equals(Object obj) {
-		return obj instanceof Data ? this.getLocalPath().equals(((Data) obj).getLocalPath()) : false;
+		return obj instanceof Data && this.getLocalPath().equals(((Data) obj).getLocalPath());
 	}
 
 	public String getContainerId() {
@@ -186,10 +190,17 @@ public class Data implements Comparable<Data> {
 		return new Path(directory, fileName);
 	}
 
+	/** @return Path, including file name */
 	public Path getLocalPath() {
 		return new Path(localDirectory, fileName);
 	}
 
+	/** @return Just the local directory, relative (I think) */
+	public Path getLocalBaseDir() {
+		return localDirectory;
+	}
+
+	/** @return Just the file name */
 	public String getName() {
 		return fileName;
 	}
@@ -228,6 +239,7 @@ public class Data implements Comparable<Data> {
 		hdfs.copyToLocalFile(false, hdfsPath, localPath);
 	}
 
+	/** Writes the local file to the distributed file system. */
 	public void stageOut() throws IOException {
 		Path localPath = getLocalPath();
 		Path hdfsDirectory = getHdfsPath().getParent();

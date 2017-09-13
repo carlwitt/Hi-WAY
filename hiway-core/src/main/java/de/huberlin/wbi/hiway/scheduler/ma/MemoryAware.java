@@ -61,17 +61,16 @@ import de.huberlin.wbi.hiway.scheduler.WorkflowScheduler;
  */
 public class MemoryAware extends WorkflowScheduler {
 
-	private Map<Integer, Queue<TaskInstance>> queuePerMem;
+	private final Map<Integer, Queue<TaskInstance>> queuePerMem = new HashMap<>();
 
 	@SuppressWarnings("rawtypes")
-	private AMRMClientAsync amRMClient;
+	private final AMRMClientAsync amRMClient;
 	private int maxMem;
 	private int maxCores;
 
 	@SuppressWarnings("rawtypes")
 	public MemoryAware(String workflowName, AMRMClientAsync amRMClient) {
 		super(workflowName);
-		queuePerMem = new HashMap<>();
 		this.amRMClient = amRMClient;
 	}
 
@@ -90,9 +89,15 @@ public class MemoryAware extends WorkflowScheduler {
 			addTaskToQueue(task);
 	}
 
+
+	/** prepares are container request of the matching memory size, puts the task into the queue for the calculated memory size */
 	@Override
 	public void addTaskToQueue(TaskInstance task) {
-		int memory = customMemoryMap.containsKey(task.getTaskName()) ? customMemoryMap.get(task.getTaskName()) : containerMemory;
+
+		// decide on the memory for the task
+		// see if there's an override memory specification for the task type, otherwise use the default
+		int memory = customMemoryMap.containsKey(task.getTaskName()) ? customMemoryMap.get(task.getTaskName()) : containerMemoryMegaBytes;
+
 		WorkflowDriver.writeToStdout("Adding task " + task + " to queue " + memory);
 		unissuedContainerRequests.add(setupContainerAskForRM(new String[0], memory));
 

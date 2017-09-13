@@ -10,6 +10,7 @@
  * Marc Bux (HU Berlin)
  * Jörgen Brandt (HU Berlin)
  * Hannes Schuh (HU Berlin)
+ * Carl Witt (HU Berlin)
  * Ulf Leser (HU Berlin)
  *
  * Jörgen Brandt is funded by the European Commission through the BiobankCloud
@@ -30,43 +31,52 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  ******************************************************************************/
-package de.huberlin.wbi.hiway.am.galaxy;
+package de.huberlin.wbi.hiway.scheduler.gpq;
 
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
+import de.huberlin.wbi.hiway.scheduler.WorkflowScheduler;
 
 /**
- * Conditionals are parameters consisting of a condition parameter and several "when this conditional is set to" when parameters.
- * 
- * @author Marc Bux
+ * Created by Carl Witt on 06.09.17.
  *
+ * @author Carl Witt (cpw@posteo.de)
  */
-public class GalaxyConditional extends GalaxyParam {
-	private GalaxyParamValue condition;
-	private final Map<String, Set<GalaxyParam>> conditionalParams;
+class GreedyPredictiveQueue extends WorkflowScheduler {
 
-	public GalaxyConditional(String name) {
-		super(name);
-		conditionalParams = new HashMap<>();
-	}
 
-	@Override
-	public Set<GalaxyParamValue> getParamValues() {
-		Set<GalaxyParamValue> paramValues = new HashSet<>();
-		paramValues.add(condition);
-		for (Set<GalaxyParam> params : conditionalParams.values())
-			for (GalaxyParam param : params)
-				paramValues.addAll(param.getParamValues());
-		return paramValues;
-	}
+//    private Queue<TaskInstance> queue = new LinkedList<>();
+//
+//    public GreedyQueue(String workflowName) {
+//        super(workflowName);
+//    }
+//
+//    @Override
+//    protected void addTask(TaskInstance task) {
+//        numberOfRemainingTasks++;
+//        if (task.readyToExecute())
+//            addTaskToQueue(task);
+//    }
+//
+//    @Override
+//    public void addTaskToQueue(TaskInstance task) {
+//        unissuedContainerRequests.add(setupContainerAskForRM(new String[0], containerMemoryMegaBytes));
+//        queue.add(task);
+//        WorkflowDriver.writeToStdout("Added task " + task + " to queue");
+//    }
+//
+//    @Override
+//    public TaskInstance getTask(Container container) {
+//        numberOfRemainingTasks--;
+//        numberOfRunningTasks++;
+//        TaskInstance task = queue.remove();
+//
+//        WorkflowDriver.writeToStdout("Assigned task " + task + " to container " + container.getId() + "@" + container.getNodeId().getHost());
+//        task.incTries();
+//        return task;
+//    }
+//
+//    @Override
+//    public int getNumberOfReadyTasks() {
+//        return queue.size();
+//    }
 
-	public void setCondition(GalaxyParamValue condition) {
-		this.condition = condition;
-	}
-
-	public void setConditionalParams(String conditionValue, Set<GalaxyParam> params) {
-		conditionalParams.put(conditionValue, params);
-	}
 }

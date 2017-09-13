@@ -61,9 +61,9 @@ public class CuneiformEApplicationMaster extends WorkflowDriver {
 	}
 
 	private RemoteWorkflow workflow;
-	private Map<CuneiformETaskInstance, JSONObject> requests;
+	private final Map<CuneiformETaskInstance, JSONObject> requests;
 
-	public CuneiformEApplicationMaster() {
+	private CuneiformEApplicationMaster() {
 		super();
 		requests = new HashMap<>();
 		setDetermineFileSizes();
@@ -143,14 +143,22 @@ public class CuneiformEApplicationMaster extends WorkflowDriver {
 	private Collection<TaskInstance> getNextTasks() {
 		Collection<TaskInstance> tasks = new LinkedList<>();
 
+		// poll all currently available tasks
 		while (workflow.hasNextRequest()) {
+
 			JSONObject request = workflow.nextRequest();
 
-			// TODO: parse request
+			// TODO: parse request -- CW: why?
 			String taskName = RemoteWorkflow.getLamName(request);
 
+			// CuneiformETaskInstance is a Hi-WAY specialization of its TaskInstance class
 			CuneiformETaskInstance task = new CuneiformETaskInstance(getRunId(), taskName);
+
 			requests.put(task, request);
+
+			// extract the task input files from the request,
+			// create a Data object for each and register it under the filename in the workflowdriver (if not already present)
+			// add the Data objects as inputs to the task
 			for (String fileName : RemoteWorkflow.getInputSet(request)) {
 				Data file = files.get(fileName);
 				if (file == null) {
@@ -160,6 +168,7 @@ public class CuneiformEApplicationMaster extends WorkflowDriver {
 				task.addInputData(file);
 			}
 
+			// materialize the request file (in current directory?)
 			try (BufferedWriter writer = new BufferedWriter(new FileWriter(task.getId() + "_request"))) {
 				writer.write(request.toString());
 			} catch (IOException e) {
@@ -167,13 +176,12 @@ public class CuneiformEApplicationMaster extends WorkflowDriver {
 				System.exit(-1);
 			}
 
+			// add the effi wrapper and specify effi's output file
 			task.setCommand("effi -r true " + task.getId() + "_request " + task.getId() + "_reply");
 			tasks.add(task);
 
-			writeEntryToLog(new JsonReportEntry(task.getWorkflowId(), task.getTaskId(), task.getTaskName(), task.getLanguageLabel(), Long.valueOf(task.getId()),
-			    null, JsonReportEntry.KEY_INVOC_SCRIPT, task.getCommand()));
-			writeEntryToLog(new JsonReportEntry(task.getWorkflowId(), task.getTaskId(), task.getTaskName(), task.getLanguageLabel(), Long.valueOf(task.getId()),
-			    null, JsonReportEntry.KEY_INVOC_EXEC, request.toString()));
+			writeEntryToLog(new JsonReportEntry(task.getWorkflowId(), task.getTaskId(), task.getTaskName(), task.getLanguageLabel(), task.getId(),null, JsonReportEntry.KEY_INVOC_SCRIPT, task.getCommand()));
+			writeEntryToLog(new JsonReportEntry(task.getWorkflowId(), task.getTaskId(), task.getTaskName(), task.getLanguageLabel(), task.getId(),null, JsonReportEntry.KEY_INVOC_EXEC, request.toString()));
 		}
 
 		return tasks;
@@ -186,7 +194,7 @@ public class CuneiformEApplicationMaster extends WorkflowDriver {
 			JSONObject reply = parseEffiFile(task.getId() + "_reply");
 			workflow.addReply(reply);
 
-			writeEntryToLog(new JsonReportEntry(task.getWorkflowId(), task.getTaskId(), task.getTaskName(), task.getLanguageLabel(), Long.valueOf(task.getId()),
+			writeEntryToLog(new JsonReportEntry(task.getWorkflowId(), task.getTaskId(), task.getTaskName(), task.getLanguageLabel(), task.getId(),
 			    null, JsonReportEntry.KEY_INVOC_OUTPUT, reply.toString()));
 			for (String fileName : RemoteWorkflow.getOutputSet(requests.get(task), reply)) {
 				files.put(fileName, new Data(fileName, containerId.toString()));

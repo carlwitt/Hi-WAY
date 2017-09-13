@@ -41,7 +41,7 @@ import de.huberlin.wbi.hiway.common.WorkflowStructureUnknownException;
 
 public class CuneiformJTaskInstance extends TaskInstance {
 
-	private Invocation invocation;
+	private final Invocation invocation;
 
 	public CuneiformJTaskInstance(Invocation invocation) {
 		super(invocation.getTicketId(), invocation.getRunId(), invocation.getTaskName(), invocation.getTaskId(), invocation.getLangLabel());

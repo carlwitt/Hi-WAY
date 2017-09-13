@@ -41,10 +41,10 @@ import java.util.Set;
  * @author Marc Bux
  *
  */
-public abstract class GalaxyParam {
-	protected final String name;
+abstract class GalaxyParam {
+	private final String name;
 
-	public GalaxyParam(String name) {
+	GalaxyParam(String name) {
 		this.name = name;
 	}
 

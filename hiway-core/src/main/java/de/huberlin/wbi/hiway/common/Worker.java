@@ -58,7 +58,7 @@ import de.huberlin.wbi.cuneiform.core.semanticmodel.JsonReportEntry;
 public class Worker {
 
 	public static void loop(Worker worker, String[] args) {
-		int exitValue = 0;
+		int exitValue;
 		worker.init(args);
 		exitValue = worker.run();
 		System.exit(exitValue);
@@ -68,32 +68,32 @@ public class Worker {
 		Worker.loop(new Worker(), args);
 	}
 
-	protected static void writeEntryToLog(JsonReportEntry entry) throws IOException {
+	private static void writeEntryToLog(JsonReportEntry entry) throws IOException {
 		try (BufferedWriter writer = new BufferedWriter(new FileWriter(new File(Invocation.REPORT_FILENAME), true))) {
 			writer.write(entry.toString() + "\n");
 		}
 	}
 
-	protected String appId;
-	protected HiWayConfiguration conf;
+	private String appId;
+	private HiWayConfiguration conf;
 	protected String containerId;
-	protected boolean determineFileSizes = false;
-	protected FileSystem hdfs;
+	private boolean determineFileSizes = false;
+	private FileSystem hdfs;
 	protected long id;
-	protected Set<Data> inputFiles;
-	protected String invocScript = "";
-	protected String langLabel;
-	protected Set<Data> outputFiles;
-	protected long taskId;
-	protected String taskName;
-	protected UUID workflowId;
+	private final Set<Data> inputFiles;
+	private String invocScript = "";
+	private String langLabel;
+	protected final Set<Data> outputFiles;
+	private long taskId;
+	private String taskName;
+	private UUID workflowId;
 
-	public Worker() {
+	protected Worker() {
 		inputFiles = new HashSet<>();
 		outputFiles = new HashSet<>();
 	}
 
-	protected int exec() {
+	private int exec() {
 		File script = new File("./" + id);
 		script.setExecutable(true);
 		ProcessBuilder processBuilder = new ProcessBuilder(script.getPath());
@@ -112,7 +112,7 @@ public class Worker {
 		return exitValue;
 	}
 
-	public void init(String[] args) {
+	private void init(String[] args) {
 
 		conf = new HiWayConfiguration();
 		try {
@@ -186,7 +186,7 @@ public class Worker {
 		}
 	}
 
-	public int run() {
+	private int run() {
 		long tic = System.currentTimeMillis();
 		stageIn();
 		long toc = System.currentTimeMillis();
@@ -259,7 +259,7 @@ public class Worker {
 		return exitValue;
 	}
 
-	public void stageIn() {
+	private void stageIn() {
 		for (Data input : inputFiles) {
 			long tic = System.currentTimeMillis();
 			try {

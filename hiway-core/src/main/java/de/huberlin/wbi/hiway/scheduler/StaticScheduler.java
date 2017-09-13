@@ -53,35 +53,37 @@ import de.huberlin.wbi.hiway.common.TaskInstance;
  */
 public abstract class StaticScheduler extends WorkflowScheduler {
 
-	// the tasks per compute node that are ready to execute
-	protected Map<String, Queue<TaskInstance>> queues;
+	/** the tasks per compute node that are ready to execute */
+	protected final Map<String, Queue<TaskInstance>> readyTasksByNode;
 
-	// the static schedule
-	protected Map<TaskInstance, String> schedule;
+	/** the assignment of task instances to nodes, this is a n:1 relationship, the order of tasks on a node is not specified */
+	protected final Map<TaskInstance, String> schedule;
 
-	public StaticScheduler(String workflowName) {
+	protected StaticScheduler(String workflowName) {
 		super(workflowName);
 		schedule = new HashMap<>();
-		queues = new HashMap<>();
+		readyTasksByNode = new HashMap<>();
 		relaxLocality = false;
 	}
 
 	@Override
 	public void addTasks(Collection<TaskInstance> tasks) {
-		if (queues.size() == 0) {
+		if (readyTasksByNode.size() == 0) {
 			WorkflowDriver.writeToStdout("No provenance data available for static scheduling. Aborting.");
 			System.exit(-1);
 		}
 		super.addTasks(tasks);
 	}
 
+	/**
+	 * Looks up the node to which the task is scheduled, creates a resource request and adds it to the node's queue
+	 * @param task
+	 */
 	@Override
 	public void addTaskToQueue(TaskInstance task) {
 		String node = schedule.get(task);
-		String[] nodes = new String[1];
-		nodes[0] = node;
-		unissuedContainerRequests.add(setupContainerAskForRM(nodes, containerMemory));
-		queues.get(node).add(task);
+		unissuedContainerRequests.add(setupContainerAskForRM(new String[]{node}, containerMemoryMegaBytes));
+		readyTasksByNode.get(node).add(task);
 		if (HiWayConfiguration.verbose)
 			WorkflowDriver.writeToStdout("Added task " + task + " to queue " + node);
 	}
@@ -93,9 +95,9 @@ public abstract class StaticScheduler extends WorkflowScheduler {
 		String node = container.getNodeId().getHost();
 
 		if (HiWayConfiguration.verbose)
-			WorkflowDriver.writeToStdout("Looking for task on container " + container.getId() + " on node " + node + "; Queue:" + queues.get(node).toString());
+			WorkflowDriver.writeToStdout("Looking for task on container " + container.getId() + " on node " + node + "; Queue:" + readyTasksByNode.get(node).toString());
 
-		TaskInstance task = queues.get(node).remove();
+		TaskInstance task = readyTasksByNode.get(node).remove();
 
 		WorkflowDriver.writeToStdout("Assigned task " + task + " to container " + container.getId() + "@" + node);
 		task.incTries();
@@ -106,7 +108,7 @@ public abstract class StaticScheduler extends WorkflowScheduler {
 	@Override
 	public int getNumberOfReadyTasks() {
 		int readyTasks = 0;
-		for (Queue<TaskInstance> queue : queues.values()) {
+		for (Queue<TaskInstance> queue : readyTasksByNode.values()) {
 			readyTasks += queue.size();
 		}
 		return readyTasks;
@@ -116,7 +118,7 @@ public abstract class StaticScheduler extends WorkflowScheduler {
 	protected void newHost(String nodeId) {
 		super.newHost(nodeId);
 		Queue<TaskInstance> queue = new LinkedList<>();
-		queues.put(nodeId, queue);
+		readyTasksByNode.put(nodeId, queue);
 	}
 
 }

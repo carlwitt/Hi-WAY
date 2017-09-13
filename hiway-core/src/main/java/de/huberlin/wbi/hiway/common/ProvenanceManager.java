@@ -49,12 +49,12 @@ import de.huberlin.wbi.cuneiform.core.semanticmodel.JsonReportEntry;
 
 public class ProvenanceManager implements HiwayDBI {
 
-	private Set<String> hostNames;
-	private Map<UUID, Map<Long, InvocStat>> runToInvocStats;
-	private Map<UUID, String> runToWorkflowName;
-	private Map<Long, String> taskIdToTaskName;
+	private final Set<String> hostNames;
+	private final Map<UUID, Map<Long, InvocStat>> runToInvocStats;
+	private final Map<UUID, String> runToWorkflowName;
+	private final Map<Long, String> taskIdToTaskName;
 
-	private Map<String, Set<Long>> workflowNameToTaskIds;
+	private final Map<String, Set<Long>> workflowNameToTaskIds;
 
 	public ProvenanceManager() {
 		runToWorkflowName = new HashMap<>();
@@ -72,7 +72,7 @@ public class ProvenanceManager implements HiwayDBI {
 	private Collection<InvocStat> getLogEntriesForTask(long taskId) {
 		Collection<InvocStat> stats = new LinkedList<>();
 		for (String hostName : getHostNames()) {
-			stats.addAll(getLogEntriesForTaskOnHostSince(taskId, hostName, 0l));
+			stats.addAll(getLogEntriesForTaskOnHostSince(taskId, hostName, 0L));
 		}
 		return stats;
 	}

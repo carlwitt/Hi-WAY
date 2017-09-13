@@ -40,15 +40,15 @@ import org.apache.hadoop.yarn.conf.YarnConfiguration;
 
 public class HiWayConfiguration extends YarnConfiguration {
 
-	public static enum HIWAY_DB_TYPE_OPTS {
+	public enum HIWAY_DB_TYPE_OPTS {
 		local, NoSQL, SQL
 	}
 
-	public static enum HIWAY_SCHEDULER_OPTS {
+	public enum HIWAY_SCHEDULER_OPTS {
 		c3po, dataAware, greedy, heft, roundRobin, memoryAware
 	}
 
-	public static enum HIWAY_WORKFLOW_LANGUAGE_OPTS {
+	public enum HIWAY_WORKFLOW_LANGUAGE_OPTS {
 		cuneiformE, cuneiformJ, dax, galaxy, log
 	}
 

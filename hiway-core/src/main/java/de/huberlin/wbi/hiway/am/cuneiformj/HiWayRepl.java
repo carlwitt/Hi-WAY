@@ -41,9 +41,9 @@ import de.huberlin.wbi.cuneiform.core.ticketsrc.TicketSrcActor;
 import de.huberlin.wbi.hiway.am.WorkflowDriver;
 
 //Repl - Read evaluation print loop
-public class HiWayRepl extends BaseRepl {
+class HiWayRepl extends BaseRepl {
 
-	private CuneiformJApplicationMaster am;
+	private final CuneiformJApplicationMaster am;
 
 	public HiWayRepl(TicketSrcActor ticketSrc, CuneiformJApplicationMaster am) {
 		super(ticketSrc, null);

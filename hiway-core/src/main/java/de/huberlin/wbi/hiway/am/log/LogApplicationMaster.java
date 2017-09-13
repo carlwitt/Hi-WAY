@@ -67,7 +67,7 @@ public class LogApplicationMaster extends WorkflowDriver {
 					JsonReportEntry entry = new JsonReportEntry(line);
 					Long invocId = entry.getInvocId();
 					if (invocId != null && !tasks.containsKey(invocId)) {
-						tasks.put(invocId, new TaskInstance(invocId, getRunId(), entry.getTaskName(), entry.getTaskId().longValue(), entry.getLang()));
+						tasks.put(invocId, new TaskInstance(invocId, getRunId(), entry.getTaskName(), entry.getTaskId(), entry.getLang()));
 					}
 					TaskInstance task = tasks.get(invocId);
 

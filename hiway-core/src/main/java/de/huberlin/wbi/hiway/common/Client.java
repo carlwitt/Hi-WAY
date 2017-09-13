@@ -132,11 +132,11 @@ public class Client {
 	private final long clientStartTime = System.currentTimeMillis();
 	// timeout threshold for client. Kill app after time interval expires.
 	private long clientTimeout;
-	private HiWayConfiguration conf;
+	private final HiWayConfiguration conf;
 	private FileSystem hdfs;
 	private String memory;
 	// command line options
-	private Options opts;
+	private final Options opts;
 	private HiWayConfiguration.HIWAY_SCHEDULER_OPTS schedulerName;
 	private Data summary;
 	private Path summaryPath;
@@ -147,9 +147,9 @@ public class Client {
 
 	private HiWayConfiguration.HIWAY_WORKFLOW_LANGUAGE_OPTS workflowType;
 	// a handle to the YARN ApplicationsManager (ASM)
-	private YarnClient yarnClient;
+	private final YarnClient yarnClient;
 
-	public Client() {
+	private Client() {
 		conf = new HiWayConfiguration();
 		yarnClient = YarnClient.createYarnClient();
 		yarnClient.init(conf);
@@ -158,15 +158,15 @@ public class Client {
 		opts.addOption("u", "summary", true, "The name of the json summary file. No file is created if this parameter is not specified.");
 		opts.addOption("m", "memory", true, "The amount of memory (in MB) to be allocated per worker container. Overrides settings in hiway-site.xml.");
 		opts.addOption("c", "custom", true, "The name of an (optional) JSON file, in which custom amounts of memory can be specified per task.");
-		String schedulers = "";
+		StringBuilder schedulers = new StringBuilder();
 		for (HiWayConfiguration.HIWAY_SCHEDULER_OPTS policy : HiWayConfiguration.HIWAY_SCHEDULER_OPTS.values()) {
-			schedulers += ", " + policy.toString();
+			schedulers.append(", ").append(policy.toString());
 		}
 		opts.addOption("s", "scheduler", true, "The scheduling policy that is to be employed. Valid arguments: " + schedulers.substring(2) + "."
 				+ " Overrides settings in hiway-site.xml.");
-		String workflowFormats = "";
+		StringBuilder workflowFormats = new StringBuilder();
 		for (HiWayConfiguration.HIWAY_WORKFLOW_LANGUAGE_OPTS language : HiWayConfiguration.HIWAY_WORKFLOW_LANGUAGE_OPTS.values()) {
-			workflowFormats += ", " + language.toString();
+			workflowFormats.append(", ").append(language.toString());
 		}
 		opts.addOption("l", "language", true, "The input file format. Will be automatically detected if not specified explicitly. Valid arguments: "
 				+ workflowFormats.substring(2) + ".");
@@ -198,7 +198,7 @@ public class Client {
 	 * @throws ParseException
 	 *             ParseException
 	 */
-	public boolean init(String[] args) throws ParseException {
+    private boolean init(String[] args) throws ParseException {
 
 		try {
 			hdfs = FileSystem.get(conf);
@@ -357,7 +357,7 @@ public class Client {
 	 * @throws YarnException
 	 *             YarnException
 	 */
-	public boolean run() throws IOException, YarnException {
+    private boolean run() throws IOException, YarnException {
 		System.out.println("Running Client");
 		yarnClient.start();
 

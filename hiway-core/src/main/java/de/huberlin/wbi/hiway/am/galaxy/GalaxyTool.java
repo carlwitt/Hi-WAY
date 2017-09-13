@@ -54,7 +54,7 @@ public class GalaxyTool {
 	// these tool's parameters
 	private Set<GalaxyParam> params;
 	// the packages (name, version) that are required to be installed for this tool to run; these requirements are parsed to determine the tool's environment
-	private Map<String, String> requirements;
+	private final Map<String, String> requirements;
 	// the template for the command to run this tool; the template will have to be compiled by Cheetah at runtime to resolve parameters
 	private String template;
 	// this tool's version number, as provided in its XML description file
@@ -122,11 +122,11 @@ public class GalaxyTool {
 		return template;
 	}
 
-	public String getUniqueId() {
+	private String getUniqueId() {
 		return getId() + "/" + getVersion();
 	}
 
-	public String getVersion() {
+	private String getVersion() {
 		return version;
 	}
 

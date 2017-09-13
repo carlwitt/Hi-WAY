@@ -1,4 +1,4 @@
-/*******************************************************************************
+/* ******************************************************************************
  * In the Hi-WAY project we propose a novel approach of executing scientific
  * workflows processing Big Data, as found in NGS applications, on distributed
  * computational infrastructures. The Hi-WAY software stack comprises the func-
@@ -55,6 +55,7 @@ import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.GnuParser;
@@ -142,13 +143,13 @@ public abstract class WorkflowDriver {
 
 		String cmd = "ls -al";
 		Runtime run = Runtime.getRuntime();
-		Process pr = null;
+		Process pr;
 		try {
 			pr = run.exec(cmd);
 			pr.waitFor();
 
 			try (BufferedReader buf = new BufferedReader(new InputStreamReader(pr.getInputStream()))) {
-				String line = "";
+				String line;
 				while ((line = buf.readLine()) != null) {
 					WorkflowDriver.writeToStdout("System CWD content: " + line);
 				}
@@ -201,71 +202,73 @@ public abstract class WorkflowDriver {
 	}
 
 	private RMCallbackHandler allocListener;
-	// the yarn tokens to be passed to any launched containers
+	/** the yarn tokens to be passed to any launched containers */
 	private ByteBuffer allTokens;
-	// a handle to the YARN ResourceManager
+	/** a handle to the YARN ResourceManager */
 	@SuppressWarnings("rawtypes")
 	private AMRMClientAsync amRMClient;
-	// this application's attempt id (combination of attemptId and fail count)
+	/** this application's attempt id (combination of attemptId and fail count) */
 	private ApplicationAttemptId appAttemptID;
-	// the internal id assigned to this application by the YARN ResourceManager
+	/** the internal id assigned to this application by the YARN ResourceManager */
 	private String appId;
-	// the hostname of the container running the Hi-WAY ApplicationMaster
+	/** the hostname of the container running the Hi-WAY ApplicationMaster */
 	private String appMasterHostname = "";
-	// the port on which the ApplicationMaster listens for status updates from clients
-	private int appMasterRpcPort = -1;
-	// the tracking URL to which the ApplicationMaster publishes info for clients to monitor
-	private String appMasterTrackingUrl = "";
-	private HiWayConfiguration conf;
+	/** the port on which the ApplicationMaster listens for status updates from clients */
+	private final int appMasterRpcPort = -1;
+	/** the tracking URL to which the ApplicationMaster publishes info for clients to monitor */
+	private final String appMasterTrackingUrl = "";
+	private final HiWayConfiguration conf;
 	private int containerCores = 1;
-	// a listener for processing the responses from the NodeManagers
+	/** a listener for processing the responses from the NodeManagers */
 	private NMCallbackHandler containerListener;
-	// the memory and number of virtual cores to request for the container on which the workflow tasks are launched
+	/** the memory and number of virtual cores to request for the container on which the workflow tasks are launched */
 	private int containerMemory = 4096;
 	private int maxMem;
 	private int maxCores;
 	private boolean determineFileSizes = false;
-	// flags denoting workflow execution has finished and been successful
+	/** flags denoting workflow execution has finished and been successful */
 	private volatile boolean done;
-	// the report, in which provenance information is stored
+	/** the report, in which provenance information is stored */
 	private Data federatedReport;
-	// private BufferedWriter federatedReportWriter;
-	protected Map<String, Data> files = new HashMap<>();
-	// a handle to the hdfs
+	/** private BufferedWriter federatedReportWriter; */
+	protected final Map<String, Data> files = new HashMap<>();
+	/** a handle to the hdfs */
 	private FileSystem hdfs;
 	private Path hdfsApplicationDirectory;
-	// a list of threads, one for each container launch
-	private List<Thread> launchThreads = new ArrayList<>();
-	// a handle to communicate with the YARN NodeManagers
+	/** a list of threads, one for each container launch */
+	private final List<Thread> launchThreads = new ArrayList<>();
+	/** a handle to communicate with the YARN NodeManagers */
 	private NMClientAsync nmClientAsync;
-	// a counter for allocated containers
-	private AtomicInteger numAllocatedContainers = new AtomicInteger();
-	// a counter for completed containers (complete denotes successful or failed
-	private AtomicInteger numCompletedContainers = new AtomicInteger();
-	// a counter for failed containers
-	private AtomicInteger numFailedContainers = new AtomicInteger();
-	// a counter for killed containers
-	private AtomicInteger numKilledContainers = new AtomicInteger();
-	// a counter for requested containers
-	private AtomicInteger numRequestedContainers = new AtomicInteger();
-	// priority of the container request
+	/** a counter for allocated containers */
+	private final AtomicInteger numAllocatedContainers = new AtomicInteger();
+	/** a counter for completed containers (complete denotes successful or failed */
+	private final AtomicInteger numCompletedContainers = new AtomicInteger();
+	/** a counter for failed containers */
+	private final AtomicInteger numFailedContainers = new AtomicInteger();
+	/** a counter for killed containers */
+	private final AtomicInteger numKilledContainers = new AtomicInteger();
+	/** a counter for requested containers */
+	private final AtomicInteger numRequestedContainers = new AtomicInteger();
+	/** a counter for the total allocated memory */
+	private final AtomicLong totalContainerMemoryMB = new AtomicLong(0);
+	/** priority of the container request */
 	private int requestPriority;
-	private UUID runId;
-	// the workflow scheduler, as defined at workflow launch time
+	private final UUID runId;
+	/** the workflow scheduler, as defined at workflow launch time */
 	private WorkflowScheduler scheduler;
 	private HiWayConfiguration.HIWAY_SCHEDULER_OPTS schedulerName;
-	// environment variables to be passed to any launched containers
-	private Map<String, String> shellEnv = new HashMap<>();
+	/** environment variables to be passed to any launched containers */
+	private final Map<String, String> shellEnv = new HashMap<>();
 	private BufferedWriter statLog;
 	private volatile boolean success;
-	private Map<String, Integer> customMemoryMap = new HashMap<>();
+	private final Map<String, Integer> customMemoryMap = new HashMap<>();
 
 	private Path summaryPath;
 	private Data workflowFile;
 
 	private Path workflowPath;
 
-	public WorkflowDriver() {
+	protected WorkflowDriver() {
 		conf = new HiWayConfiguration();
 		try {
 			hdfs = FileSystem.get(conf);
@@ -276,6 +279,8 @@ public abstract class WorkflowDriver {
 		runId = UUID.randomUUID();
 	}
 	
+
+	/** Does work in a while loop as long as not interrupted. Sleeps in between iterations to throttle. */
 	@SuppressWarnings("unchecked")
 	protected void loop() {
 		try {
@@ -307,10 +312,12 @@ public abstract class WorkflowDriver {
 
 				amRMClient.addContainerRequest(request);
 				numRequestedContainers.incrementAndGet();
+				totalContainerMemoryMB.addAndGet(request.getCapability().getMemory());
+
 			}
 			Thread.sleep(1000);
 
-			WorkflowDriver.writeToStdout("Current application state: requested=" + numRequestedContainers + ", completed=" + numCompletedContainers + ", failed="
+			WorkflowDriver.writeToStdout("Current application state: requested=" + numRequestedContainers + ", totalContainerMemoryMB=" + totalContainerMemoryMB + ",completed=" + numCompletedContainers + ", failed="
 					+ numFailedContainers + ", killed=" + numKilledContainers + ", allocated=" + numAllocatedContainers);
 			if (HiWayConfiguration.verbose) {
 				// information on outstanding container request
@@ -366,7 +373,7 @@ public abstract class WorkflowDriver {
 			}
 			try (BufferedReader reader = new BufferedReader(new FileReader(task.getId() + "_" + Invocation.STDOUT_FILENAME))) {
 				String line;
-				StringBuffer sb = new StringBuffer();
+				StringBuilder sb = new StringBuilder();
 				while ((line = reader.readLine()) != null) {
 					sb.append(line.replaceAll("\\\\", "\\\\\\\\").replaceAll("\"", "\\\"")).append('\n');
 				}
@@ -379,7 +386,7 @@ public abstract class WorkflowDriver {
 			}
 			try (BufferedReader reader = new BufferedReader(new FileReader(task.getId() + "_" + Invocation.STDERR_FILENAME))) {
 				String line;
-				StringBuffer sb = new StringBuffer();
+				StringBuilder sb = new StringBuilder();
 				while ((line = reader.readLine()) != null) {
 					sb.append(line.replaceAll("\\\\", "\\\\\\\\").replaceAll("\"", "\\\"")).append('\n');
 				}
@@ -510,7 +517,7 @@ public abstract class WorkflowDriver {
 		return containerListener;
 	}
 
-	public int getContainerMemory() {
+	int getContainerMemory() {
 		return containerMemory;
 	}
 
@@ -554,7 +561,7 @@ public abstract class WorkflowDriver {
 		return output;
 	}
 
-	public Collection<Data> getOutputFiles() {
+	protected Collection<Data> getOutputFiles() {
 		Collection<Data> outputFiles = new ArrayList<>();
 
 		for (Data data : files.values()) {
@@ -578,11 +585,11 @@ public abstract class WorkflowDriver {
 		return shellEnv;
 	}
 
-	public Data getWorkflowFile() {
+	protected Data getWorkflowFile() {
 		return workflowFile;
 	}
 
-	public String getWorkflowName() {
+	private String getWorkflowName() {
 		return workflowFile.getName();
 	}
 
@@ -595,9 +602,9 @@ public abstract class WorkflowDriver {
 		opts.addOption("u", "summary", true, "The name of the json summary file. No file is created if this parameter is not specified.");
 		opts.addOption("m", "memory", true, "The amount of memory (in MB) to be allocated per worker container. Overrides settings in hiway-site.xml.");
 		opts.addOption("c", "custom", true, "The name of an (optional) JSON file, in which custom amounts of memory can be specified per task.");
-		String schedulers = "";
+		StringBuilder schedulers = new StringBuilder();
 		for (HiWayConfiguration.HIWAY_SCHEDULER_OPTS policy : HiWayConfiguration.HIWAY_SCHEDULER_OPTS.values()) {
-			schedulers += ", " + policy.toString();
+			schedulers.append(", ").append(policy.toString());
 		}
 		opts.addOption("s", "scheduler", true, "The scheduling policy that is to be employed. Valid arguments: " + schedulers.substring(2) + "."
 				+ " Overrides settings in hiway-site.xml.");
@@ -750,7 +757,7 @@ public abstract class WorkflowDriver {
 		return determineFileSizes;
 	}
 
-	public abstract Collection<TaskInstance> parseWorkflow();
+	protected abstract Collection<TaskInstance> parseWorkflow();
 
 	/**
 	 * Main run function for the application master
@@ -761,7 +768,7 @@ public abstract class WorkflowDriver {
 	 * @throws IOException
 	 *             IOException
 	 */
-	public boolean run() throws YarnException, IOException {
+	private boolean run() throws IOException {
 		WorkflowDriver.writeToStdout("Starting ApplicationMaster");
 
 		Credentials credentials = UserGroupInformation.getCurrentUser().getCredentials();
@@ -892,7 +899,7 @@ public abstract class WorkflowDriver {
 		return success;
 	}
 
-	public void setDetermineFileSizes() {
+	protected void setDetermineFileSizes() {
 		determineFileSizes = true;
 	}
 
@@ -909,7 +916,7 @@ public abstract class WorkflowDriver {
 			try (BufferedReader reader = new BufferedReader(new StringReader(task.getCommand()))) {
 				int i = 0;
 				while ((line = reader.readLine()) != null)
-					WorkflowDriver.writeToStdout(String.format("%02d  %s", Integer.valueOf(++i), line));
+					WorkflowDriver.writeToStdout(String.format("%02d  %s", ++i, line));
 			}
 
 			Data stdoutFile = new Data(task.getId() + "_" + Invocation.STDOUT_FILENAME, containerId.toString());
@@ -936,6 +943,12 @@ public abstract class WorkflowDriver {
 		WorkflowDriver.writeToStdout("[end]");
 	}
 
+	/**
+	 * Adds the succeeded task's children to the to-be-scheduled queue (if they're ready). <br/>
+	 * Set's the container ID on all of the task's output {@link Data} objects.  <br/>
+	 * Checks if the workflow execution is done (scheduler has neither ready nor running tasks).  <br/>
+	 * Is called by the {@link RMCallbackHandler#onContainersCompleted(List)} after receiving (and checking for diagnostics) the container completed message from the Resource Manager.
+	 */
 	public void taskSuccess(TaskInstance task, ContainerId containerId) {
 		try {
 			for (TaskInstance childTask : task.getChildTasks()) {
@@ -954,7 +967,7 @@ public abstract class WorkflowDriver {
 		}
 	}
 	
-	public boolean isDone() {
+	protected boolean isDone() {
 	  return done;
   }
 

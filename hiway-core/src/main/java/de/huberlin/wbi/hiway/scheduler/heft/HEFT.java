@@ -65,13 +65,13 @@ import de.huberlin.wbi.hiway.scheduler.StaticScheduler;
  */
 public class HEFT extends StaticScheduler {
 
-	private int containers;
+	private final int containers;
 
-	private Map<String, ArrayList<Map<Double, Double>>> freeTimeSlotLengthsPerNode;
-	private Map<String, ArrayList<TreeSet<Double>>> freeTimeSlotStartsPerNode;
-	private Map<TaskInstance, Double> readyTimePerTask;
+	private final Map<String, ArrayList<Map<Double, Double>>> freeTimeSlotLengthsPerNode;
+	private final Map<String, ArrayList<TreeSet<Double>>> freeTimeSlotStartsPerNode;
+	private final Map<TaskInstance, Double> readyTimePerTask;
 
-	private Map<String, ArrayList<TreeMap<Double, TaskInstance>>> taskOnsetsPerNode;
+	private final Map<String, ArrayList<TreeMap<Double, TaskInstance>>> taskOnsetsPerNode;
 
 	public HEFT(String workflowName, int containers) {
 		super(workflowName);
@@ -204,7 +204,7 @@ public class HEFT extends StaticScheduler {
 
 	@Override
 	public void addTasks(Collection<TaskInstance> tasks) {
-		if (queues.size() == 0) {
+		if (readyTasksByNode.size() == 0) {
 			WorkflowDriver.writeToStdout("No provenance data available for static scheduling. Aborting.");
 			System.exit(-1);
 		}
@@ -289,7 +289,7 @@ public class HEFT extends StaticScheduler {
 		}
 	}
 
-	public void printSchedule() {
+	private void printSchedule() {
 		StringBuilder sb = new StringBuilder("HEFT Schedule:\n");
 		for (String node : taskOnsetsPerNode.keySet()) {
 			ArrayList<TreeMap<Double, TaskInstance>> taskOnsetsPerContainer = taskOnsetsPerNode.get(node);
