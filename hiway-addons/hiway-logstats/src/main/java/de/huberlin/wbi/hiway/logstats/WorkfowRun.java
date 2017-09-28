@@ -32,7 +32,7 @@
  ******************************************************************************/
 package de.huberlin.wbi.hiway.logstats;
 
-public class WorkfowRun {
+class WorkfowRun {
 
 	private int maxConcurrentNodes;
 	private long noTaskReadyTime;

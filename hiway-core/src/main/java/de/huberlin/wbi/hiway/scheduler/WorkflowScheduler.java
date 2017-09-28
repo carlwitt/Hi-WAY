@@ -176,10 +176,6 @@ public abstract class WorkflowScheduler {
 		int run = getNumberOfRunningTasks();
 		int rem = numberOfRemainingTasks;
 
-		// WorkflowDriver.writeToStdout("Scheduled Containers Finished: " + fin);
-		// WorkflowDriver.writeToStdout("Scheduled Containers Running: " + run);
-		// WorkflowDriver.writeToStdout("Scheduled Containers Remaining: " + rem);
-
 		return fin + run + rem;
 	}
 

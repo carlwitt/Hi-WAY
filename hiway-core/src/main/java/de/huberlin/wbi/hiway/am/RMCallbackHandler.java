@@ -1,28 +1,3 @@
-/* *
- * <p>
- * The Heterogeneity-incorporating Workflow ApplicationMaster for YARN (Hi-WAY) provides the means to execute arbitrary scientific workflows on top of <a
- * href="http://hadoop.apache.org/">Apache's Hadoop 2.2.0 (YARN)</a>. In this context, scientific workflows are directed acyclic graphs (DAGs), in which nodes
- * are executables accessible from the command line (e.g. tar, cat, or any other executable in the PATH of the worker nodes), and edges represent data
- * dependencies between these executables.
- * </p>
- * 
- * <p>
- * Hi-WAY currently supports the workflow languages <a href="http://pegasus.isi.edu/wms/docs/latest/creating_workflows.php">Pegasus DAX</a> and <a
- * href="https://github.com/joergen7/cuneiform">Cuneiform</a> as well as the workflow schedulers static round robin, HEFT, greedy queue and C3PO. Hi-WAY uses
- * Hadoop's distributed file system HDFS to store the workflow's input, output and intermediate data. The ApplicationMaster has been tested for up to 320
- * concurrent tasks and is fault-tolerant in that it is able to restart failed tasks.
- * </p>
- * 
- * <p>
- * When executing a scientific workflow, Hi-WAY requests a container from YARN's ResourceManager for each workflow task that is ready to execute. A task is
- * ready to execute once all its input data is available, i.e., all its data dependencies are resolved. The worker nodes on which containers are to be allocated
- * as well as the task assigned to an allocated container depend on the selected scheduling strategy.
- * </p>
- * 
- * <p>
- * The Hi-WAY ApplicationMaster is based on Hadoop's DistributedShell.
- * </p>
- */
 package de.huberlin.wbi.hiway.am;
 
 import java.util.Collection;
@@ -31,7 +6,10 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
+import de.huberlin.wbi.hiway.common.HiWayInvocation;
 import org.apache.hadoop.yarn.api.records.Container;
 import org.apache.hadoop.yarn.api.records.ContainerId;
 import org.apache.hadoop.yarn.api.records.ContainerState;
@@ -50,6 +28,9 @@ import de.huberlin.wbi.cuneiform.core.semanticmodel.JsonReportEntry;
 import de.huberlin.wbi.hiway.common.HiWayConfiguration;
 import de.huberlin.wbi.hiway.common.TaskInstance;
 
+/**
+ * Receives messages about allocated and completed containers, node updates, reports workflow execution progress to the web interface.
+ */
 class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 
 	private final WorkflowDriver am;
@@ -81,14 +62,14 @@ class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 	@Override
 	public float getProgress() {
 		// set progress to deliver to RM on next heartbeat
-		if (am.getScheduler() == null)
-			return 0f;
+		if (am.getScheduler() == null) return 0f;
 		int totalTasks = am.getScheduler().getNumberOfTotalTasks();
 		return (totalTasks == 0) ? 0 : (float) am.getNumCompletedContainers().get() / totalTasks;
 	}
 
 	private void launchTask(TaskInstance task, Container allocatedContainer) {
 		containerIdToInvocation.put(allocatedContainer.getId(), new HiWayInvocation(task));
+		am.taskInstanceByContainer.putIfAbsent(allocatedContainer, task);
 
 		LaunchContainerRunnable runnableLaunchContainer = new LaunchContainerRunnable(allocatedContainer, am.getContainerListener(), task, am);
 		Thread launchThread = new Thread(runnableLaunchContainer);
@@ -139,20 +120,8 @@ class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 		}
 
 		for (Container container : allocatedContainers) {
-			JSONObject value = new JSONObject();
-			try {
-				value.put("type", "container-allocated");
-				value.put("container-id", container.getId());
-				value.put("node-id", container.getNodeId());
-				value.put("node-http", container.getNodeHttpAddress());
-				value.put("memory", container.getResource().getMemory());
-				value.put("vcores", container.getResource().getVirtualCores());
-				value.put("service", container.getContainerToken().getService());
-			} catch (JSONException e) {
-				onError(e);
-			}
+			/* log */ logHiwayEventContainerAllocated(container);
 
-			am.writeEntryToLog(new JsonReportEntry(am.getRunId(), null, null, null, null, null, HiwayDBI.KEY_HIWAY_EVENT, value));
 			ContainerRequest request = findFirstMatchingRequest(container);
 
 			if (request != null) {
@@ -185,17 +154,7 @@ class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 	public void onContainersCompleted(List<ContainerStatus> completedContainers) {
 		for (ContainerStatus containerStatus : completedContainers) {
 
-			JSONObject value = new JSONObject();
-			try {
-				value.put("type", "container-completed");
-				value.put("container-id", containerStatus.getContainerId());
-				value.put("state", containerStatus.getState());
-				value.put("exit-code", containerStatus.getExitStatus());
-				value.put("diagnostics", containerStatus.getDiagnostics());
-			} catch (JSONException e) {
-				onError(e);
-			}
-			am.writeEntryToLog(new JsonReportEntry(am.getRunId(), null, null, null, null, null, HiwayDBI.KEY_HIWAY_EVENT, value));
+			/* log */ logHiwayEventContainerCompleted(containerStatus);
 
 			// non complete containers should not be here
 			assert (containerStatus.getState() == ContainerState.COMPLETE);
@@ -302,5 +261,41 @@ class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 	public void onShutdownRequest() {
 		WorkflowDriver.writeToStdout("Shutdown Request.");
 		am.setDone();
+	}
+
+	/** Write a JSON log entry informing about a successfully allocated container.
+	 * Called from {@link #onContainersAllocated(List)}.*/
+	private void logHiwayEventContainerAllocated(Container container) {
+		JSONObject value = new JSONObject();
+		try {
+			value.put("type", "container-allocated");
+			value.put("container-id", container.getId());
+			value.put("node-id", container.getNodeId());
+			value.put("node-http", container.getNodeHttpAddress());
+			value.put("memory", container.getResource().getMemory());
+			value.put("vcores", container.getResource().getVirtualCores());
+			value.put("service", container.getContainerToken().getService());
+		} catch (JSONException e) {
+			onError(e);
+		}
+		am.writeEntryToLog(new JsonReportEntry(am.getRunId(), null, null, null, null, null, HiwayDBI.KEY_HIWAY_EVENT, value));
+	}
+
+	/**
+	 * Write a JSON log entry informing about completed containers.
+	 * @param containerStatus the ContainerStatus of as reported back to the {@link #onContainersCompleted(List)} callback.
+	 */
+	private void logHiwayEventContainerCompleted(ContainerStatus containerStatus) {
+		JSONObject value = new JSONObject();
+		try {
+			value.put("type", "container-completed");
+			value.put("container-id", containerStatus.getContainerId());
+			value.put("state", containerStatus.getState());
+			value.put("exit-code", containerStatus.getExitStatus());
+			value.put("diagnostics", containerStatus.getDiagnostics());
+		} catch (JSONException e) {
+			onError(e);
+		}
+		am.writeEntryToLog(new JsonReportEntry(am.getRunId(), null, null, null, null, null, HiwayDBI.KEY_HIWAY_EVENT, value));
 	}
 }

@@ -40,7 +40,7 @@ import java.nio.file.Paths;
 import java.util.Scanner;
 
 /** Assumes UTF-8 encoding. JDK 7+. */
-public class ReadWithScanner {
+class ReadWithScanner {
 
 	/**
 	 * Constructor.
@@ -68,7 +68,7 @@ public class ReadWithScanner {
 	 * This simple default implementation expects simple name-value pairs, separated by an '=' sign. Examples of valid input: <tt>height = 167cm</tt>
 	 * <tt>mass =  65kg</tt> <tt>disposition =  "grumpy"</tt> <tt>this is the name = this is the value</tt>
 	 */
-	protected static void processLine(String aLine) {
+	private static void processLine(String aLine) {
 		// use a second Scanner to parse the content of each line
 		try (Scanner scanner = new Scanner(aLine)) {
 			scanner.useDelimiter("=");

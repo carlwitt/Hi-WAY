@@ -1,28 +1,3 @@
-/* *
- * <p>
- * The Heterogeneity-incorporating Workflow ApplicationMaster for YARN (Hi-WAY) provides the means to execute arbitrary scientific workflows on top of <a
- * href="http://hadoop.apache.org/">Apache's Hadoop 2.2.0 (YARN)</a>. In this context, scientific workflows are directed acyclic graphs (DAGs), in which nodes
- * are executables accessible from the command line (e.g. tar, cat, or any other executable in the PATH of the worker nodes), and edges represent data
- * dependencies between these executables.
- * </p>
- * 
- * <p>
- * Hi-WAY currently supports the workflow languages <a href="http://pegasus.isi.edu/wms/docs/latest/creating_workflows.php">Pegasus DAX</a> and <a
- * href="https://github.com/joergen7/cuneiform">Cuneiform</a> as well as the workflow schedulers static round robin, HEFT, greedy queue and C3PO. Hi-WAY uses
- * Hadoop's distributed file system HDFS to store the workflow's input, output and intermediate data. The ApplicationMaster has been tested for up to 320
- * concurrent tasks and is fault-tolerant in that it is able to restart failed tasks.
- * </p>
- * 
- * <p>
- * When executing a scientific workflow, Hi-WAY requests a container from YARN's ResourceManager for each workflow task that is ready to execute. A task is
- * ready to execute once all its input data is available, i.e., all its data dependencies are resolved. The worker nodes on which containers are to be allocated
- * as well as the task assigned to an allocated container depend on the selected scheduling strategy.
- * </p>
- * 
- * <p>
- * The Hi-WAY ApplicationMaster is based on Hadoop's DistributedShell.
- * </p>
- */
 package de.huberlin.wbi.hiway.am;
 
 import java.io.BufferedWriter;
@@ -43,7 +18,6 @@ import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import org.apache.hadoop.yarn.util.Records;
 
 import de.huberlin.wbi.cuneiform.core.invoc.Invocation;
-import de.huberlin.wbi.hiway.am.NMCallbackHandler;
 import de.huberlin.wbi.hiway.am.cuneiforme.CuneiformEApplicationMaster;
 import de.huberlin.wbi.hiway.am.cuneiformj.CuneiformJApplicationMaster;
 import de.huberlin.wbi.hiway.am.dax.DaxApplicationMaster;
@@ -54,7 +28,9 @@ import de.huberlin.wbi.hiway.common.HiWayConfiguration;
 import de.huberlin.wbi.hiway.common.TaskInstance;
 
 /**
- * Thread to connect to the {@link ContainerManagementProtocol} and launch the container that will execute the shell command.
+ * Thread to connect to the {@link ContainerManagementProtocol} and launch the container that will execute the shell command.<br/>
+ * The main point here is to construct the {@link ContainerLaunchContext} that is passed to the Node Manager to start the container. <br/>
+ * Every instance of this class is passed the reference to the global {@link NMCallbackHandler} to add the container to the watch list.
  */
 class LaunchContainerRunnable implements Runnable {
 
@@ -68,14 +44,10 @@ class LaunchContainerRunnable implements Runnable {
 	private final TaskInstance task;
 
 	/**
-	 * @param lcontainer
-	 *            Allocated container
-	 * @param containerListener
-	 *            Callback handler of the container
-	 * @param task
-	 *            The task to be launched
-	 * @param am
-	 *            The Application Master
+	 * @param lcontainer Allocated container
+	 * @param containerListener Callback handler of the container
+	 * @param task The task to be launched
+	 * @param am The Application Master
 	 */
 	LaunchContainerRunnable(Container lcontainer, NMCallbackHandler containerListener, TaskInstance task, WorkflowDriver am) {
 		this.container = lcontainer;

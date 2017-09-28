@@ -46,20 +46,20 @@ import de.huberlin.wbi.hiway.common.TaskInstance;
 public class DaxTaskInstance extends TaskInstance {
 
 	private final Map<Data, Long> fileSizesByte;
-	private double runtimeSeconds;
-	private long peakMemoryBytes;
+	private double runtimeSeconds = 0;
+	private long peakMemoryBytes = 0;
 
-	public DaxTaskInstance(UUID workflowId, String taskName) {
+	DaxTaskInstance(UUID workflowId, String taskName) {
 		super(workflowId, taskName, Math.abs(taskName.hashCode() + 1));
 		fileSizesByte = new HashMap<>();
 	}
 
-	public void addInputData(Data data, Long fileSize) {
+	void addInputData(Data data, Long fileSize) {
 		super.addInputData(data);
 		fileSizesByte.put(data, fileSize);
 	}
 
-	public void addOutputData(Data data, Long fileSize) {
+	void addOutputData(Data data, Long fileSize) {
 		super.addOutputData(data);
 		fileSizesByte.put(data, fileSize);
 	}
@@ -67,30 +67,18 @@ public class DaxTaskInstance extends TaskInstance {
 	@Override
 	public String getCommand() {
 
-		if (runtimeSeconds > 0) {
-
-//			TODO add a docker container executor to try the volume mounting
+		if (runtimeSeconds > 0.) {
 
 			StringBuilder command = new StringBuilder();
 
-			// consume memory of the specified amount (moved to top because of parentheses not working to change priorities of & and ;)
-			// create a temp directory
-			Path tmpFsDir = new Path(getOutputData().iterator().next().getLocalBaseDir(), "inmemoryspace");
-			command.append(String.format("mkdir %s", tmpFsDir));
-			// then, mount it in memory
-			command.append(String.format(" ; mount -t tmpfs -o size=%sM tmpfs %s", (peakMemoryBytes+1000)/1000, tmpFsDir));
-			// then, write to it
-			command.append(String.format(" ; dd if=/dev/zero of=%s/zero bs=%s count=1 ", tmpFsDir, peakMemoryBytes));
+			// consume memory of the specified amount
+			int memoryMegaBytes = (int) Math.ceil(peakMemoryBytes/1024/1024);
+			command.append(String.format("docker run --rm --memory=%sb --name %s -i 192.168.127.11:5000/witt/fake-executor:1.0 %s %s",  getDockerContainerName(), (int) runtimeSeconds, memoryMegaBytes));
 
-			// then, sleep for task execution time at least the specified amount of time (since writing files could take longer)
-			command.append(String.format(" ; sleep %ss", runtimeSeconds));
-
-			// then, unmount (after everything is done)
-			command.append(String.format(" ; umount %s", tmpFsDir));
-
-			// in parallel, write fake output files of the specified size
+			// write fake output files of the specified size
+			// this may take some time, so the specified task runtime will be regularly exceeded
 			for (Data output : getOutputData()) {
-				command.append(String.format(" & dd if=/dev/zero of=%s bs=%s count=1", output.getLocalPath(), fileSizesByte.get(output) ));
+				command.append(String.format("; dd if=/dev/zero of=%s bs=%s count=1", output.getLocalPath(), fileSizesByte.get(output) ));
 			}
 
 			return command.toString();
@@ -112,11 +100,11 @@ public class DaxTaskInstance extends TaskInstance {
 		return super.getInputData();
 	}
 
-	public void setRuntimeSeconds(double runtimeSeconds) {
+	void setRuntimeSeconds(double runtimeSeconds) {
 		this.runtimeSeconds = runtimeSeconds;
 	}
 
-	public void setPeakMemoryConsumption(long peakMemoryBytes){
+	void setPeakMemoryConsumption(long peakMemoryBytes){
 		this.peakMemoryBytes = peakMemoryBytes;
 	}
 }

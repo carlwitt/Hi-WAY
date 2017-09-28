@@ -65,67 +65,73 @@ public class DaxApplicationMaster extends WorkflowDriver {
 		WorkflowDriver.launch(new DaxApplicationMaster(), args);
 	}
 
-	private DaxApplicationMaster() {
-		super();
-		setDetermineFileSizes();
-	}
+    private DaxApplicationMaster() {
+        super();
+        setDetermineFileSizes();
+    }
 
-	@Override
-	public Collection<TaskInstance> parseWorkflow() {
+    /**
+     *  Parse the workflow graph from a dax file.
+     */
+    @Override
+    public Collection<TaskInstance> parseWorkflow() {
 
-		WorkflowDriver.writeToStdout("Parsing Pegasus DAX " + getWorkflowFile());
+        WorkflowDriver.writeToStdout("Parsing Pegasus DAX " + getWorkflowFile());
 
-		try {
-			DocumentBuilder builder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
-			Document doc = builder.parse(new File(getWorkflowFile().getLocalPath().toString()));
-			NodeList jobNds = doc.getElementsByTagName("job");
+        try {
+            DocumentBuilder builder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
+            Document doc = builder.parse(new File(getWorkflowFile().getLocalPath().toString()));
+            NodeList jobNds = doc.getElementsByTagName("job");
 
-			// read all the job xml elements into task objects
-			Map<Object, TaskInstance> tasks = getJobs(jobNds);
+            // read all the job xml elements into task objects
+            Map<Object, TaskInstance> tasks = getJobs(jobNds);
 
-			// from the parsed jobs, get those declared a child of another
-			// and set the task parent accordingly
-			NodeList childNds = doc.getElementsByTagName("child");
-			for (int i = 0; i < childNds.getLength(); i++) {
-				Element childEl = (Element) childNds.item(i);
-				String childId = childEl.getAttribute("ref");
-				TaskInstance child = tasks.get(childId);
+            // from the parsed jobs, get those declared a child of another
+            // and set the task parent accordingly
+            NodeList childNds = doc.getElementsByTagName("child");
+            for (int i = 0; i < childNds.getLength(); i++) {
+                Element childEl = (Element) childNds.item(i);
+                String childId = childEl.getAttribute("ref");
+                TaskInstance child = tasks.get(childId);
 
-				NodeList parentNds = childEl.getElementsByTagName("parent");
-				for (int j = 0; j < parentNds.getLength(); j++) {
-					Element parentEl = (Element) parentNds.item(j);
-					String parentId = parentEl.getAttribute("ref");
-					TaskInstance parent = tasks.get(parentId);
+                NodeList parentNds = childEl.getElementsByTagName("parent");
+                for (int j = 0; j < parentNds.getLength(); j++) {
+                    Element parentEl = (Element) parentNds.item(j);
+                    String parentId = parentEl.getAttribute("ref");
+                    TaskInstance parent = tasks.get(parentId);
 
-					child.addParentTask(parent);
-					parent.addChildTask(child);
-				}
-			}
+                    child.addParentTask(parent);
+                    parent.addChildTask(child);
+                }
+            }
 
-			// mark those tasks without children as output tasks
-			for (TaskInstance task : tasks.values()) {
-				if (task.getChildTasks().size() == 0) {
-					for (Data data : task.getOutputData()) {
-						data.setOutput(true);
-					}
-				}
+            // mark those tasks without children as output tasks
+            for (TaskInstance task : tasks.values()) {
+                if (task.getChildTasks().size() == 0) {
+                    for (Data data : task.getOutputData()) {
+                        data.setOutput(true);
+                    }
+                }
 
-				task.getReport().add(
-						new JsonReportEntry(task.getWorkflowId(), task.getTaskId(), task.getTaskName(), task.getLanguageLabel(), task.getId(), null, JsonReportEntry.KEY_INVOC_SCRIPT, task.getCommand()));
-			}
+                task.getReport().add(
+                        new JsonReportEntry(task.getWorkflowId(), task.getTaskId(), task.getTaskName(), task.getLanguageLabel(), task.getId(), null, JsonReportEntry.KEY_INVOC_SCRIPT, task.getCommand()));
+            }
 
-			return tasks.values();
+            return tasks.values();
 
-		} catch (WorkflowStructureUnknownException | IOException | JSONException | ParserConfigurationException | SAXException e) {
-			e.printStackTrace(System.out);
-			System.exit(-1);
-		}
+        } catch (WorkflowStructureUnknownException | IOException | JSONException | ParserConfigurationException | SAXException e) {
+            e.printStackTrace(System.out);
+            System.exit(-1);
+        }
 
-		// that's what was returned in case of failure before code refactor
-		return new HashMap<Object, TaskInstance>().values();
+        // that's what was returned in case of failure before code refactor
+        return new HashMap<Object, TaskInstance>().values();
 
-	}
+    }
 
+    /**
+     * Helper method for parsing the workflow from dax file format.
+     */
 	private Map<Object, TaskInstance> getJobs(NodeList jobNds) throws JSONException {
 		Map<Object, TaskInstance> tasks = new HashMap<>();
 		for (int i = 0; i < jobNds.getLength(); i++) {
@@ -134,7 +140,7 @@ public class DaxApplicationMaster extends WorkflowDriver {
             String taskName = jobEl.getAttribute("name");
             DaxTaskInstance task = new DaxTaskInstance(getRunId(), taskName);
             task.setRuntimeSeconds(jobEl.hasAttribute("runtime") ? Double.parseDouble(jobEl.getAttribute("runtime")) : 0d);
-            task.setPeakMemoryConsumption(jobEl.hasAttribute("memory_bytes") ? Long.parseLong(jobEl.getAttribute("memory_bytes")) : 0L);
+            if(jobEl.hasAttribute("peak_mem_bytes")) task.setPeakMemoryConsumption(Long.parseLong(jobEl.getAttribute("peak_mem_bytes")));
             tasks.put(id, task);
 
             StringBuilder arguments = new StringBuilder();
@@ -182,7 +188,10 @@ public class DaxApplicationMaster extends WorkflowDriver {
         return tasks;
 	}
 
-	private void edge(DaxTaskInstance task, NodeList usesNds) throws JSONException {
+    /**
+     * Helper method for parsing the workflow from dax file format.
+     */
+    private void edge(DaxTaskInstance task, NodeList usesNds) throws JSONException {
 		for (int j = 0; j < usesNds.getLength(); j++) {
             Element usesEl = (Element) usesNds.item(j);
             if (usesEl.hasAttribute("type") && usesEl.getAttribute("type").compareTo("executable") == 0)

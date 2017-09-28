@@ -47,6 +47,7 @@ import java.nio.ByteBuffer;
  *
  * @author Carl Witt (cpw@posteo.de)
  */
+@Deprecated
 class MonitoringService extends org.apache.hadoop.yarn.server.api.AuxiliaryService{
 
 

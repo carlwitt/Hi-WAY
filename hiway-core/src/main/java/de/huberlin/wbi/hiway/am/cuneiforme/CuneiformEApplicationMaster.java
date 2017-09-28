@@ -180,8 +180,8 @@ public class CuneiformEApplicationMaster extends WorkflowDriver {
 			task.setCommand("effi -r true " + task.getId() + "_request " + task.getId() + "_reply");
 			tasks.add(task);
 
-			writeEntryToLog(new JsonReportEntry(task.getWorkflowId(), task.getTaskId(), task.getTaskName(), task.getLanguageLabel(), task.getId(),null, JsonReportEntry.KEY_INVOC_SCRIPT, task.getCommand()));
-			writeEntryToLog(new JsonReportEntry(task.getWorkflowId(), task.getTaskId(), task.getTaskName(), task.getLanguageLabel(), task.getId(),null, JsonReportEntry.KEY_INVOC_EXEC, request.toString()));
+			/* log */ writeEntryToLog(new JsonReportEntry(task.getWorkflowId(), task.getTaskId(), task.getTaskName(), task.getLanguageLabel(), task.getId(),null, JsonReportEntry.KEY_INVOC_SCRIPT, task.getCommand()));
+			/* log */ writeEntryToLog(new JsonReportEntry(task.getWorkflowId(), task.getTaskId(), task.getTaskName(), task.getLanguageLabel(), task.getId(),null, JsonReportEntry.KEY_INVOC_EXEC, request.toString()));
 		}
 
 		return tasks;

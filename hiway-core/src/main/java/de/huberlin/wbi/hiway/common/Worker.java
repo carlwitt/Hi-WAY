@@ -186,21 +186,18 @@ public class Worker {
 		}
 	}
 
+	/**
+	 *
+	 * @return
+	 */
 	private int run() {
-		long tic = System.currentTimeMillis();
+		/* metrics */ long tic = System.currentTimeMillis();
 		stageIn();
-		long toc = System.currentTimeMillis();
-		JSONObject obj = new JSONObject();
-		try {
-			obj.put(JsonReportEntry.LABEL_REALTIME, Long.toString(toc - tic));
-		} catch (JSONException e) {
-			e.printStackTrace(System.out);
-		}
-		try {
-			writeEntryToLog(new JsonReportEntry(tic, workflowId, taskId, taskName, langLabel, id, null, HiwayDBI.KEY_INVOC_TIME_STAGEIN, obj));
-		} catch (IOException e) {
-			e.printStackTrace(System.out);
-		}
+		/* metrics */ long toc = System.currentTimeMillis();
+		/* log */ try {
+			writeEntryToLog(new JsonReportEntry(tic, workflowId, taskId, taskName, langLabel, id, null, HiwayDBI.KEY_INVOC_TIME_STAGEIN,
+				new JSONObject().put(JsonReportEntry.LABEL_REALTIME, Long.toString(toc - tic))));
+		} catch (JSONException | IOException e) { e.printStackTrace(System.out); }
 
 		// tic = System.currentTimeMillis();
 		int exitValue = exec();
@@ -237,7 +234,7 @@ public class Worker {
 
 		stageOut();
 		toc = System.currentTimeMillis();
-		obj = new JSONObject();
+		JSONObject obj = new JSONObject();
 		try {
 			obj.put(JsonReportEntry.LABEL_REALTIME, Long.toString(toc - tic));
 		} catch (JSONException e) {

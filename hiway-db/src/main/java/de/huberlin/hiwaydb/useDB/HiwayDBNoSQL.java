@@ -64,19 +64,19 @@ import de.huberlin.wbi.cuneiform.core.semanticmodel.JsonReportEntry;
 
 public class HiwayDBNoSQL implements HiwayDBI {
 
-	private List<URI> dbURLs;
-	private String password;
-	private String bucket;
+	private final List<URI> dbURLs;
+	private final String password;
+	private final String bucket;
 
-	private String dbURLSQL;
-	private String passwordSQL;
-	private String usernameSQL;
+	private final String dbURLSQL;
+	private final String passwordSQL;
+	private final String usernameSQL;
 	private String wfName;
 	private String runIDat;
-	private String config;
+	private final String config;
 
 	private CouchbaseClient client = null;
-	private Gson gson;
+	private final Gson gson;
 	private long dbVolume;
 
 	private SessionFactory dbSessionFactory = null;
@@ -338,7 +338,7 @@ public class HiwayDBNoSQL implements HiwayDBI {
 					try {
 						invocDocument.setRealTime(GetTimeStat(valuePart));
 					} catch (NumberFormatException e) {
-						invocDocument.setRealTime(1l);
+						invocDocument.setRealTime(1L);
 					}
 				}
 				break;
@@ -509,7 +509,7 @@ public class HiwayDBNoSQL implements HiwayDBI {
 		// Set up the Query object
 		Query query = new Query();
 
-		query.setIncludeDocs(true).setRange(ComplexKey.of(taskId, hostName, timestamp), ComplexKey.of(taskId, hostName, 999999999999999999l));
+		query.setIncludeDocs(true).setRange(ComplexKey.of(taskId, hostName, timestamp), ComplexKey.of(taskId, hostName, 999999999999999999L));
 
 		// Query the Cluster
 		ViewResponse result = client.query(view, query);
@@ -540,8 +540,8 @@ public class HiwayDBNoSQL implements HiwayDBI {
 				List<FileStat> fileStatout = new ArrayList<>();
 				List<FileStat> fileStatin = new ArrayList<>();
 				FileStat file = null;
-				Long in = 0l;
-				Long out = 0l;
+				Long in = 0L;
+				Long out = 0L;
 
 				for (Entry<String, HashMap<String, Long>> val : output.entrySet()) {
 					file = new FileStat();

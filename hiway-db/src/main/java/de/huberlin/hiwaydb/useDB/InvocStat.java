@@ -39,8 +39,8 @@ import java.util.Map;
 public class InvocStat {
 
 	private String hostName;
-	private Map<String, FileStat> inputFiles;
-	private Map<String, FileStat> outputFiles;
+	private final Map<String, FileStat> inputFiles;
+	private final Map<String, FileStat> outputFiles;
 	private Long realTime;
 
 	private final long taskId;
@@ -48,7 +48,7 @@ public class InvocStat {
 	private final String runId;
 
 	public InvocStat(String runId, long taskId) {
-		this.timestamp = -1l;
+		this.timestamp = -1L;
 		this.taskId = taskId;
 		this.runId = runId;
 
@@ -88,7 +88,7 @@ public class InvocStat {
 		return inputFiles.get(fileName);
 	}
 
-	public Collection<FileStat> getInputFiles() {
+	private Collection<FileStat> getInputFiles() {
 		return inputFiles.values();
 	}
 
@@ -96,7 +96,7 @@ public class InvocStat {
 		return outputFiles.get(fileName);
 	}
 
-	public Collection<FileStat> getOutputFiles() {
+	private Collection<FileStat> getOutputFiles() {
 		return outputFiles.values();
 	}
 

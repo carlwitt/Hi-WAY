@@ -61,23 +61,23 @@ import de.huberlin.wbi.cuneiform.core.semanticmodel.JsonReportEntry;
 
 public class HiwayDB implements HiwayDBI {
 
-	public static <T> List<T> castList(Class<? extends T> clazz, Collection<?> c) {
+	private static <T> List<T> castList(Class<? extends T> clazz, Collection<?> c) {
 		List<T> r = new ArrayList<>(c.size());
 		for (Object o : c)
 			r.add(clazz.cast(o));
 		return r;
 	}
 
-	private String configFile = "hibernate.cfg.xml";
+	private final String configFile = "hibernate.cfg.xml";
 
 	private SessionFactory dbSessionFactory = null;
 	private SessionFactory dbSessionFactoryMessung = null;
 
-	private String dbURL;
-	private String password;
-	private String username;
+	private final String dbURL;
+	private final String password;
+	private final String username;
 	private long dbVolume;
-	private String config;
+	private final String config;
 	private String wfName;
 	private String runIDat;
 
@@ -699,7 +699,7 @@ public class HiwayDB implements HiwayDBI {
 						invoc.setRealTime(GetTimeStat(valuePart));
 				} catch (NumberFormatException e) {
 					if (invoc != null)
-						invoc.setRealTime(1l);
+						invoc.setRealTime(1L);
 				}
 
 				break;
@@ -846,7 +846,7 @@ public class HiwayDB implements HiwayDBI {
 
 	}
 
-	public static void logStackTrace(Throwable e) {
+	private static void logStackTrace(Throwable e) {
 		Writer writer = new StringWriter();
 		PrintWriter printWriter = new PrintWriter(writer);
 		e.printStackTrace(printWriter);

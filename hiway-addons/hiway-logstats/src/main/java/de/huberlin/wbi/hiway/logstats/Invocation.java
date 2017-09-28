@@ -32,7 +32,7 @@
  ******************************************************************************/
 package de.huberlin.wbi.hiway.logstats;
 
-public class Invocation {
+class Invocation {
 
 	private long execTime;
 	private long execTimestamp;
@@ -45,7 +45,7 @@ public class Invocation {
 	private long stageoutTime;
 	private long stageoutTimestamp;
 	private long startupTimestamp;
-	private String taskName;
+	private final String taskName;
 
 	private double totalFileSize = 1d;
 

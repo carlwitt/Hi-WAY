@@ -90,8 +90,7 @@ public class Client {
 	/**
 	 * The main routine.
 	 * 
-	 * @param args
-	 *            Command line arguments passed to the Client.
+	 * @param args Command line arguments passed to the Client.
 	 */
 	public static void main(String[] args) {
 		boolean result = false;
@@ -178,11 +177,8 @@ public class Client {
 	/**
 	 * Kill a submitted application by sending a call to the ASM.
 	 * 
-	 * @param appId
-	 *            Application Id to be killed.
+	 * @param appId Application Id to be killed.
 	 * 
-	 * @throws YarnException
-	 * @throws IOException
 	 */
 	private void forceKillApplication(ApplicationId appId) throws YarnException, IOException {
 		// Response can be ignored as it is non-null on success or throws an exception in case of failures
@@ -192,11 +188,8 @@ public class Client {
 	/**
 	 * Parse command line options.
 	 * 
-	 * @param args
-	 *            Parsed command line options.
+	 * @param args Parsed command line options.
 	 * @return Whether the init was successful to run the client.
-	 * @throws ParseException
-	 *             ParseException
 	 */
     private boolean init(String[] args) throws ParseException {
 
@@ -301,8 +294,6 @@ public class Client {
 	 * @param appId
 	 *            Application Id of application to be monitored
 	 * @return true if application completed successfully
-	 * @throws YarnException
-	 * @throws IOException
 	 */
 	private boolean monitorApplication(ApplicationId appId) throws YarnException, IOException {
 		while (true) {
@@ -352,10 +343,6 @@ public class Client {
 	 * Main run function for the client.
 	 * 
 	 * @return true if application completed successfully.
-	 * @throws IOException
-	 *             IOException
-	 * @throws YarnException
-	 *             YarnException
 	 */
     private boolean run() throws IOException, YarnException {
 		System.out.println("Running Client");

@@ -72,9 +72,9 @@ import de.huberlin.wbi.cuneiform.core.semanticmodel.JsonReportEntry;
  * Task Execution Characteristics: Startup vs Execution vs Shutdown
  * 
  */
-public class LogParser {
+class LogParser {
 	
-	private static boolean average = true;
+	private static final boolean average = true;
 
 	public class JsonReportEntryComparatorByTimestamp implements Comparator<JsonReportEntry> {
 		@Override
@@ -104,14 +104,14 @@ public class LogParser {
 		}
 	}
 
-	List<JsonReportEntry> entries;
+	private List<JsonReportEntry> entries;
 
-	private File file;
-	private Map<Long, Invocation> invocations;
+	private final File file;
+	private final Map<Long, Invocation> invocations;
 
-	private WorkfowRun run;
+	private final WorkfowRun run;
 
-	public LogParser(String fileName) {
+	private LogParser(String fileName) {
 		file = new File(fileName);
 		invocations = new HashMap<>();
 		run = new WorkfowRun();
@@ -162,7 +162,7 @@ public class LogParser {
 		}
 	}
 
-	public void firstPass() throws IOException, JSONException {
+	private void firstPass() throws IOException, JSONException {
 		entries = new LinkedList<>();
 		try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
 			String line;
@@ -251,7 +251,7 @@ public class LogParser {
 		}
 	}
 
-	public void printStatistics(boolean printHeaders) {
+	private void printStatistics(boolean printHeaders) {
 		Map<String, Set<Invocation>> invocationsByTaskname = new HashMap<>();
 		for (Invocation invocation : invocations.values()) {
 			String taskname = invocation.getTaskName();
@@ -324,7 +324,7 @@ public class LogParser {
 		entries = new LinkedList<>(new LinkedHashSet<>(entries));
 	}
 
-	public void secondPass() throws JSONException {
+	private void secondPass() throws JSONException {
 		int maxContainers = 0;
 		int currentContainers = 0;
 		for (JsonReportEntry entry : entries) {
@@ -393,7 +393,7 @@ public class LogParser {
 		run.setMaxConcurrentNodes(maxContainers);
 	}
 
-	public void thirdPass() throws JSONException {
+	private void thirdPass() throws JSONException {
 
 		// time in which a container has got no work to do, as there is
 		// currently no task ready to execute

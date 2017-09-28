@@ -39,27 +39,27 @@ import de.huberlin.wbi.cuneiform.core.semanticmodel.JsonReportEntry;
 
 public interface HiwayDBI {
 
-	public static final String KEY_FILE_TIME_STAGEIN = "file-time-stagein";
-	public static final String KEY_FILE_TIME_STAGEOUT = "file-time-stageout";
-	public static final String KEY_HIWAY_EVENT = "hiway-event";
-	public static final String KEY_INVOC_HOST = "invoc-host";
-	public static final String KEY_INVOC_TIME_SCHED = "invoc-time-sched";
-	public static final String KEY_INVOC_TIME_STAGEIN = "invoc-time-stagein";
-	public static final String KEY_INVOC_TIME_STAGEOUT = "invoc-time-stageout";
-	public static final String KEY_WF_NAME = "wf-name";
-	public static final String KEY_WF_TIME = "wf-time";
-	public static final String KEY_WF_OUTPUT = "wf-output";
+	String KEY_FILE_TIME_STAGEIN = "file-time-stagein";
+	String KEY_FILE_TIME_STAGEOUT = "file-time-stageout";
+	String KEY_HIWAY_EVENT = "hiway-event";
+	String KEY_INVOC_HOST = "invoc-host";
+	String KEY_INVOC_TIME_SCHED = "invoc-time-sched";
+	String KEY_INVOC_TIME_STAGEIN = "invoc-time-stagein";
+	String KEY_INVOC_TIME_STAGEOUT = "invoc-time-stageout";
+	String KEY_WF_NAME = "wf-name";
+	String KEY_WF_TIME = "wf-time";
+	String KEY_WF_OUTPUT = "wf-output";
 
-	public Set<String> getHostNames();
+	Set<String> getHostNames();
 
-	public Set<Long> getTaskIdsForWorkflow(String workflowName);
+	Set<Long> getTaskIdsForWorkflow(String workflowName);
 
-	public String getTaskName(long taskId);
+	String getTaskName(long taskId);
 
-	public Collection<InvocStat> getLogEntriesForTasks(Set<Long> taskIds);
+	Collection<InvocStat> getLogEntriesForTasks(Set<Long> taskIds);
 
-	public Collection<InvocStat> getLogEntriesForTaskOnHostSince(long taskId, String hostName, long timestamp);
+	Collection<InvocStat> getLogEntriesForTaskOnHostSince(long taskId, String hostName, long timestamp);
 
-	public void logToDB(JsonReportEntry entry);
+	void logToDB(JsonReportEntry entry);
 
 }

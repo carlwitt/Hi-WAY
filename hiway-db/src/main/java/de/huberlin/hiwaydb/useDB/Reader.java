@@ -64,7 +64,7 @@ import de.huberlin.hiwaydb.dal.Invocation;
 import de.huberlin.hiwaydb.dal.Userevent;
 import de.huberlin.hiwaydb.dal.Workflowrun;
 
-public class Reader {
+class Reader {
 
 	private static SessionFactory dbSessionFactory;
 	private static SessionFactory dbSessionFactoryStandard;

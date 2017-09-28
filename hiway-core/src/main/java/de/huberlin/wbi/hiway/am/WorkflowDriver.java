@@ -54,9 +54,12 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
+import org.apache.avro.data.Json;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.GnuParser;
 import org.apache.commons.cli.HelpFormatter;
@@ -73,12 +76,7 @@ import org.apache.hadoop.metrics2.lib.DefaultMetricsSystem;
 import org.apache.hadoop.yarn.api.ApplicationConstants;
 import org.apache.hadoop.yarn.api.ApplicationConstants.Environment;
 import org.apache.hadoop.yarn.api.protocolrecords.RegisterApplicationMasterResponse;
-import org.apache.hadoop.yarn.api.records.ApplicationAttemptId;
-import org.apache.hadoop.yarn.api.records.ContainerId;
-import org.apache.hadoop.yarn.api.records.FinalApplicationStatus;
-import org.apache.hadoop.yarn.api.records.Priority;
-import org.apache.hadoop.yarn.api.records.Resource;
-import org.apache.hadoop.yarn.api.records.ResourceRequest;
+import org.apache.hadoop.yarn.api.records.*;
 import org.apache.hadoop.yarn.client.api.AMRMClient.ContainerRequest;
 import org.apache.hadoop.yarn.client.api.async.AMRMClientAsync;
 import org.apache.hadoop.yarn.client.api.async.NMClientAsync;
@@ -105,64 +103,15 @@ import de.huberlin.wbi.hiway.scheduler.ma.MemoryAware;
 import de.huberlin.wbi.hiway.scheduler.rr.RoundRobin;
 
 /**
- * <p>
- * The Heterogeneity-incorporating Workflow ApplicationMaster for YARN (Hi-WAY) provides the means to execute arbitrary scientific workflows on top of <a
- * href="http://hadoop.apache.org/">Apache's Hadoop 2.2.0 (YARN)</a>. In this context, scientific workflows are directed acyclic graphs (DAGs), in which nodes
- * are executables accessible from the command line (e.g. tar, cat, or any other executable in the PATH of the worker nodes), and edges represent data
- * dependencies between these executables.
- * </p>
- * 
- * <p>
- * Hi-WAY currently supports the workflow languages <a href="http://pegasus.isi.edu/wms/docs/latest/creating_workflows.php">Pegasus DAX</a> and <a
- * href="https://github.com/joergen7/cuneiform">Cuneiform</a> as well as the workflow schedulers static round robin, HEFT, greedy queue and C3PO. Hi-WAY uses
- * Hadoop's distributed file system HDFS to store the workflow's input, output and intermediate data. The ApplicationMaster has been tested for up to 320
- * concurrent tasks and is fault-tolerant in that it is able to restart failed tasks.
- * </p>
- * 
- * <p>
- * When executing a scientific workflow, Hi-WAY requests a container from YARN's ResourceManager for each workflow task that is ready to execute. A task is
- * ready to execute once all its input data is available, i.e., all its data dependencies are resolved. The worker nodes on which containers are to be allocated
- * as well as the task assigned to an allocated container depend on the selected scheduling strategy.
- * </p>
- * 
- * <p>
- * The Hi-WAY ApplicationMaster is based on Hadoop's DistributedShell.
- * </p>
+ * Base class for the different Application Masters corresponding to the supported workflow languages like
+ * Cuneiform {@link de.huberlin.wbi.hiway.am.cuneiforme.CuneiformEApplicationMaster}
+ * and DAX {@link de.huberlin.wbi.hiway.am.dax.DaxApplicationMaster}.
  */
 public abstract class WorkflowDriver {
 
 	/**
-	 * If the debug flag is set, dump out contents of current working directory and the environment to stdout for debugging.
-	 */
-	private static void dumpOutDebugInfo() {
-		WorkflowDriver.writeToStdout("Dump debug output");
-		Map<String, String> envs = System.getenv();
-		for (Map.Entry<String, String> env : envs.entrySet()) {
-			WorkflowDriver.writeToStdout("System env: key=" + env.getKey() + ", val=" + env.getValue());
-		}
-
-		String cmd = "ls -al";
-		Runtime run = Runtime.getRuntime();
-		Process pr;
-		try {
-			pr = run.exec(cmd);
-			pr.waitFor();
-
-			try (BufferedReader buf = new BufferedReader(new InputStreamReader(pr.getInputStream()))) {
-				String line;
-				while ((line = buf.readLine()) != null) {
-					WorkflowDriver.writeToStdout("System CWD content: " + line);
-				}
-			}
-		} catch (IOException | InterruptedException e) {
-			e.printStackTrace(System.out);
-			System.exit(-1);
-		}
-	}
-
-	/**
 	 * The main routine.
-	 * 
+	 *
 	 * @param appMaster
 	 *            The Application Master
 	 * @param args
@@ -191,54 +140,70 @@ public abstract class WorkflowDriver {
 		}
 	}
 
-	/**
-	 * Helper function to print usage.
-	 * 
-	 * @param opts
-	 *            Parsed command line options.
-	 */
-	private static void printUsage(Options opts) {
-		new HelpFormatter().printHelp("hiway [options] workflow", opts);
-	}
 
-	private RMCallbackHandler allocListener;
-	/** the yarn tokens to be passed to any launched containers */
-	private ByteBuffer allTokens;
-	/** a handle to the YARN ResourceManager */
-	@SuppressWarnings("rawtypes")
+	// Hadoop interface
+	/** a handle to interact with the YARN ResourceManager */
 	private AMRMClientAsync amRMClient;
-	/** this application's attempt id (combination of attemptId and fail count) */
-	private ApplicationAttemptId appAttemptID;
-	/** the internal id assigned to this application by the YARN ResourceManager */
-	private String appId;
-	/** the hostname of the container running the Hi-WAY ApplicationMaster */
-	private String appMasterHostname = "";
-	/** the port on which the ApplicationMaster listens for status updates from clients */
-	private final int appMasterRpcPort = -1;
-	/** the tracking URL to which the ApplicationMaster publishes info for clients to monitor */
-	private final String appMasterTrackingUrl = "";
-	private final HiWayConfiguration conf;
-	private int containerCores = 1;
 	/** a listener for processing the responses from the NodeManagers */
 	private NMCallbackHandler containerListener;
+	/** a handle to communicate with the YARN NodeManagers */
+	private NMClientAsync nmClientAsync;
+	/** the yarn tokens to be passed to any launched containers */
+	private ByteBuffer allTokens;
+	/** a handle to the hdfs */
+	private FileSystem hdfs;
+	private Path hdfsApplicationDirectory;
+
+	// Scheduling
+	/** the workflow scheduler, as defined at workflow launch time */
+	private WorkflowScheduler scheduler;
+	private HiWayConfiguration.HIWAY_SCHEDULER_OPTS schedulerName;
+	private final Map<String, Integer> customMemoryMap = new HashMap<>();
+
+	// Resource management
 	/** the memory and number of virtual cores to request for the container on which the workflow tasks are launched */
 	private int containerMemory = 4096;
 	private int maxMem;
 	private int maxCores;
-	private boolean determineFileSizes = false;
+	private int containerCores = 1;
+	/** priority of the container request */
+	private int requestPriority;
+
+	// Application Master self-management
+    private HiWayConfiguration conf;
+    /** Remembers the mapping to subsequently retrieve task information when being informed about containers, e.g., in {@link NMCallbackHandler#onContainerStatusReceived(ContainerId, ContainerStatus)}*/
+	final ConcurrentMap<Container, TaskInstance> taskInstanceByContainer = new ConcurrentHashMap<>();
+    /** a list of threads, one for each container launch, to make container launching non-blocking */
+    private final List<Thread> launchThreads = new ArrayList<>();
+    /** ??? */
+    protected final Map<String, Data> files = new HashMap<>();
+
+	// Execution logic
+	private Data workflowFile;
+	private Path workflowPath;
+	/** A unique id used to identify a run of a workflow. */
+	private UUID runId;
+	/** the internal id assigned to this application by the YARN ResourceManager */
+	private String appId;
+	/** this application's attempt id (combination of attemptId and fail count) */
+	private ApplicationAttemptId appAttemptID;
 	/** flags denoting workflow execution has finished and been successful */
 	private volatile boolean done;
+	private volatile boolean success;
+
+	// OS and worker related
+	/** environment variables to be passed to any launched containers */
+	private final Map<String, String> shellEnv = new HashMap<>();
+	/** Don't know what it does, but it is passed to the ContainerLaunchContext in {@link LaunchContainerRunnable} as --size */
+	private boolean determineFileSizes = false;
+
+	// Logging and reporting
+	private Path summaryPath;
 	/** the report, in which provenance information is stored */
-	private Data federatedReport;
-	/** private BufferedWriter federatedReportWriter; */
-	protected final Map<String, Data> files = new HashMap<>();
-	/** a handle to the hdfs */
-	private FileSystem hdfs;
-	private Path hdfsApplicationDirectory;
-	/** a list of threads, one for each container launch */
-	private final List<Thread> launchThreads = new ArrayList<>();
-	/** a handle to communicate with the YARN NodeManagers */
-	private NMClientAsync nmClientAsync;
+    private Data federatedReport;
+	private BufferedWriter statLog;
+	/** Format for logging. */
+	private static SimpleDateFormat dateFormat = new SimpleDateFormat("yy/MM/dd HH:mm:ss");
 	/** a counter for allocated containers */
 	private final AtomicInteger numAllocatedContainers = new AtomicInteger();
 	/** a counter for completed containers (complete denotes successful or failed */
@@ -251,22 +216,6 @@ public abstract class WorkflowDriver {
 	private final AtomicInteger numRequestedContainers = new AtomicInteger();
 	/** a counter for the total allocated memory */
 	private final AtomicLong totalContainerMemoryMB = new AtomicLong(0);
-	/** priority of the container request */
-	private int requestPriority;
-	private final UUID runId;
-	/** the workflow scheduler, as defined at workflow launch time */
-	private WorkflowScheduler scheduler;
-	private HiWayConfiguration.HIWAY_SCHEDULER_OPTS schedulerName;
-	/** environment variables to be passed to any launched containers */
-	private final Map<String, String> shellEnv = new HashMap<>();
-	private BufferedWriter statLog;
-	private volatile boolean success;
-	private final Map<String, Integer> customMemoryMap = new HashMap<>();
-
-	private Path summaryPath;
-	private Data workflowFile;
-
-	private Path workflowPath;
 
 	protected WorkflowDriver() {
 		conf = new HiWayConfiguration();
@@ -278,7 +227,7 @@ public abstract class WorkflowDriver {
 		}
 		runId = UUID.randomUUID();
 	}
-	
+
 
 	/** Does work in a while loop as long as not interrupted. Sleeps in between iterations to throttle. */
 	@SuppressWarnings("unchecked")
@@ -350,6 +299,9 @@ public abstract class WorkflowDriver {
 		}
 	}
 
+	/**
+	 * What does this do? Nobody knows!
+	 */
 	@SuppressWarnings("static-method")
 	public void evaluateReport(TaskInstance task, ContainerId containerId) {
 		try {
@@ -761,7 +713,7 @@ public abstract class WorkflowDriver {
 
 	/**
 	 * Main run function for the application master
-	 * 
+	 *
 	 * @return True if there were no errors
 	 * @throws YarnException
 	 *             YarnException
@@ -784,7 +736,7 @@ public abstract class WorkflowDriver {
 			}
 			allTokens = ByteBuffer.wrap(dob.getData(), 0, dob.getLength());
 
-			allocListener = new RMCallbackHandler(this);
+			RMCallbackHandler allocListener = new RMCallbackHandler(this);
 			amRMClient = AMRMClientAsync.createAMRMClientAsync(1000, allocListener);
 			amRMClient.init(conf);
 			amRMClient.start();
@@ -806,56 +758,61 @@ public abstract class WorkflowDriver {
 			}
 
 			// Register self with ResourceManager. This will start heartbeating to the RM.
-			appMasterHostname = NetUtils.getHostname();
+			/* the hostname of the container running the Hi-WAY ApplicationMaster */
+			String appMasterHostname = NetUtils.getHostname();
+			/* the port on which the ApplicationMaster listens for status updates from clients */
+			int appMasterRpcPort = -1;
+			/* the tracking URL to which the ApplicationMaster publishes info for clients to monitor */
+			String appMasterTrackingUrl = "";
 			RegisterApplicationMasterResponse response = amRMClient.registerApplicationMaster(appMasterHostname, appMasterRpcPort, appMasterTrackingUrl);
 
 			switch (schedulerName) {
-			case roundRobin:
-			case heft:
-				int workerMemory = conf.getInt(YarnConfiguration.NM_PMEM_MB, YarnConfiguration.DEFAULT_NM_PMEM_MB);
-				scheduler = schedulerName.equals(HiWayConfiguration.HIWAY_SCHEDULER_OPTS.roundRobin) ? new RoundRobin(getWorkflowName()) : new HEFT(
-						getWorkflowName(), workerMemory / containerMemory);
-				break;
-			case greedy:
-				scheduler = new GreedyQueue(getWorkflowName());
-				break;
-			case memoryAware:
-				scheduler = new MemoryAware(getWorkflowName(), amRMClient);
-				break;
-			default:
-				C3PO c3po = new C3PO(getWorkflowName());
-				switch (schedulerName) {
-				// case conservative:
-				// c3po.setConservatismWeight(12d);
-				// c3po.setnClones(0);
-				// c3po.setPlacementAwarenessWeight(0.01d);
-				// c3po.setOutlookWeight(0.01d);
-				// break;
-				// case cloning:
-				// c3po.setConservatismWeight(0.01d);
-				// c3po.setnClones(1);
-				// c3po.setPlacementAwarenessWeight(0.01d);
-				// c3po.setOutlookWeight(0.01d);
-				// break;
-				case dataAware:
-					c3po.setConservatismWeight(0.01d);
-					c3po.setnClones(0);
-					c3po.setPlacementAwarenessWeight(12d);
-					c3po.setOutlookWeight(0.01d);
+				case roundRobin:
+				case heft:
+					int workerMemory = conf.getInt(YarnConfiguration.NM_PMEM_MB, YarnConfiguration.DEFAULT_NM_PMEM_MB);
+					scheduler = schedulerName.equals(HiWayConfiguration.HIWAY_SCHEDULER_OPTS.roundRobin) ? new RoundRobin(getWorkflowName()) : new HEFT(
+							getWorkflowName(), workerMemory / containerMemory);
 					break;
-				// case outlooking:
-				// c3po.setConservatismWeight(0.01d);
-				// c3po.setnClones(0);
-				// c3po.setPlacementAwarenessWeight(0.01d);
-				// c3po.setOutlookWeight(12d);
-				// break;
+				case greedy:
+					scheduler = new GreedyQueue(getWorkflowName());
+					break;
+				case memoryAware:
+					scheduler = new MemoryAware(getWorkflowName(), amRMClient);
+					break;
 				default:
-					c3po.setConservatismWeight(3d);
-					c3po.setnClones(2);
-					c3po.setPlacementAwarenessWeight(1d);
-					c3po.setOutlookWeight(2d);
-				}
-				scheduler = c3po;
+					C3PO c3po = new C3PO(getWorkflowName());
+					switch (schedulerName) {
+						// case conservative:
+						// c3po.setConservatismWeight(12d);
+						// c3po.setnClones(0);
+						// c3po.setPlacementAwarenessWeight(0.01d);
+						// c3po.setOutlookWeight(0.01d);
+						// break;
+						// case cloning:
+						// c3po.setConservatismWeight(0.01d);
+						// c3po.setnClones(1);
+						// c3po.setPlacementAwarenessWeight(0.01d);
+						// c3po.setOutlookWeight(0.01d);
+						// break;
+						case dataAware:
+							c3po.setConservatismWeight(0.01d);
+							c3po.setnClones(0);
+							c3po.setPlacementAwarenessWeight(12d);
+							c3po.setOutlookWeight(0.01d);
+							break;
+						// case outlooking:
+						// c3po.setConservatismWeight(0.01d);
+						// c3po.setnClones(0);
+						// c3po.setPlacementAwarenessWeight(0.01d);
+						// c3po.setOutlookWeight(12d);
+						// break;
+						default:
+							c3po.setConservatismWeight(3d);
+							c3po.setnClones(2);
+							c3po.setPlacementAwarenessWeight(1d);
+							c3po.setOutlookWeight(2d);
+					}
+					scheduler = c3po;
 			}
 			scheduler.init(conf, hdfs, containerMemory, customMemoryMap, containerCores, requestPriority);
 
@@ -966,13 +923,15 @@ public abstract class WorkflowDriver {
 			setDone();
 		}
 	}
-	
+
 	protected boolean isDone() {
-	  return done;
-  }
+		return done;
+	}
 
 	public void writeEntryToLog(JsonReportEntry entry) {
 		try {
+			// TODO this does not create valid JSON, because the (cuneiform) implementation produces unquoted attribute names in the JSON object.
+			// the workaround is to postprocess the log or use a tolerant parser (such as from python package dirtyjson)
 			statLog.write(entry.toString());
 			statLog.newLine();
 			statLog.flush();
@@ -982,10 +941,90 @@ public abstract class WorkflowDriver {
 		}
 		scheduler.addEntryToDB(entry);
 	}
-	
+
 	public static void writeToStdout(String s) {
-	  SimpleDateFormat dateFormat = new SimpleDateFormat("yy/MM/dd HH:mm:ss");
-    System.out.println(dateFormat.format(new Date()) + " " + s);
+		System.out.println(dateFormat.format(new Date()) + " " + s);
 	}
+
+	/**
+	 * (Failed) attempt to create valid JSON (in contrast to {@link JsonReportEntry#toString()}, which does not quote some attribute name strings).
+	 * The problem is that there's no way to get to the actual value of the object. Access is private and both getters are broken.
+	 * java.lang.RuntimeException: Value is not a JSON object, but a string. at de.huberlin.wbi.cuneiform.core.semanticmodel.JsonReportEntry.getValueJsonObj(JsonReportEntry.java:229)
+	 * java.lang.RuntimeException: Value is not a string, but a JSON object. at de.huberlin.wbi.cuneiform.core.semanticmodel.JsonReportEntry.getValueRawString(JsonReportEntry.java:239)
+	 * @return a single JSON object, as serialized to a string
+	 * @deprecated
+	 */
+	public static String jsonReportEntryToString(JsonReportEntry entry){
+		StringBuffer buf;
+
+		buf = new StringBuffer();
+
+		buf.append( '{' );
+		buf.append("\"").append( JsonReportEntry.ATT_TIMESTAMP ).append("\"").append( ':' ).append( entry.getTimestamp() ).append( ',' );
+		buf.append("\"").append( JsonReportEntry.ATT_RUNID ).append("\"").append( ":\"" ).append( entry.getRunId() ).append( "\"," );
+
+		if( entry.hasTaskId() )
+			buf.append("\"").append( JsonReportEntry.ATT_TASKID ).append("\"").append( ':' ).append( entry.getTaskId() ).append( ',' );
+
+		if( entry.hasTaskname() )
+			buf.append("\"").append( JsonReportEntry.ATT_TASKNAME ).append("\"").append( ':' ).append( "\"" ).append( entry.getTaskName() ).append( "\"," );
+
+		if( entry.hasLang() )
+			buf.append("\"").append( JsonReportEntry.ATT_LANG ).append("\"").append( ':' ).append( "\"" ).append( entry.getLang() ).append( "\"," );
+
+		if( entry.hasInvocId() )
+			buf.append("\"").append( JsonReportEntry.ATT_INVOCID ).append("\"").append( ':' ).append( entry.getInvocId() ).append( ',' );
+
+		if( entry.hasFile() )
+			buf.append("\"").append( JsonReportEntry.ATT_FILE ).append("\"").append( ":\"" ).append( entry.getFile() ).append( "\"," );
+
+		buf.append("\"").append( JsonReportEntry.ATT_KEY ).append("\"").append( ":\"" ).append( entry.getKey() ).append( "\"," );
+		// there's no way to get to the .value field (private) both getValueJsonObj and getValueRawString are broken.
+//		try {
+//			buf.append("\"").append( JsonReportEntry.ATT_VALUE ).append("\"").append( ':' ).append( entry.getValueJsonObj().toString() );
+//		} catch (JSONException e) {
+//			e.printStackTrace();
+//		}
+		buf.append( '}' );
+
+		return buf.toString();
+	}
+
+	/** If the debug flag is set, dump out contents of current working directory and the environment to stdout for debugging. */
+	private static void dumpOutDebugInfo() {
+		WorkflowDriver.writeToStdout("Dump debug output");
+		Map<String, String> envs = System.getenv();
+		for (Map.Entry<String, String> env : envs.entrySet()) {
+			WorkflowDriver.writeToStdout("System env: key=" + env.getKey() + ", val=" + env.getValue());
+		}
+
+		String cmd = "ls -al";
+		Runtime run = Runtime.getRuntime();
+		Process pr;
+		try {
+			pr = run.exec(cmd);
+			pr.waitFor();
+
+			try (BufferedReader buf = new BufferedReader(new InputStreamReader(pr.getInputStream()))) {
+				String line;
+				while ((line = buf.readLine()) != null) {
+					WorkflowDriver.writeToStdout("System CWD content: " + line);
+				}
+			}
+		} catch (IOException | InterruptedException e) {
+			e.printStackTrace(System.out);
+			System.exit(-1);
+		}
+	}
+
+	/**
+	 * Helper function to print usage.
+	 * @param opts
+	 *            Parsed command line options.
+	 */
+	private static void printUsage(Options opts) {
+		new HelpFormatter().printHelp("hiway [options] workflow", opts);
+	}
+
 
 }

@@ -43,7 +43,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+import de.huberlin.wbi.hiway.am.WorkflowDriver;
 import org.apache.hadoop.yarn.api.records.Container;
+import org.apache.hadoop.yarn.api.records.ContainerId;
+import org.apache.hadoop.yarn.api.records.ContainerStatus;
 import org.apache.hadoop.yarn.api.records.LocalResource;
 
 import de.huberlin.wbi.cuneiform.core.semanticmodel.ForeignLambdaExpr;
@@ -54,65 +57,41 @@ import de.huberlin.wbi.cuneiform.core.semanticmodel.JsonReportEntry;
  */
 public class TaskInstance implements Comparable<TaskInstance> {
 
-	private static class Comparators {
-
-		public static Comparator<TaskInstance> DEPTH = new Comparator<TaskInstance>() {
-			@Override
-			public int compare(TaskInstance task1, TaskInstance task2) {
-				try {
-					return Integer.compare(task1.getDepth(), task2.getDepth());
-				} catch (WorkflowStructureUnknownException e) {
-					e.printStackTrace(System.out);
-					System.exit(1);
-					throw new RuntimeException(e);
-				}
-			}
-		};
-
-		public static Comparator<TaskInstance> UPWARDSRANK = new Comparator<TaskInstance>() {
-			@Override
-			public int compare(TaskInstance task1, TaskInstance task2) {
-				try {
-					return -Double.compare(task1.getUpwardRank(), task2.getUpwardRank());
-				} catch (WorkflowStructureUnknownException e) {
-					e.printStackTrace(System.out);
-					System.exit(1);
-					throw new RuntimeException(e);
-				}
-			}
-		};
-
-	}
-
 	private static int runningId = 1;
-
-	private final Set<TaskInstance> childTasks;
-	/** the command to be executed */
-	private String command;
-	/** whether this task is completed yet */
-	private boolean completed;
-	private int depth = 0;
 	/** this task instance's id */
 	protected final long id;
+	private final long taskId;
+
+	// Workflow graph related
+	/** the id of the workflow this task instance belongs to */
+	private final UUID workflowId;
+	private final Set<TaskInstance> parentTasks;
+	private final Set<TaskInstance> childTasks;
 	/** input data */
 	private final Set<Data> inputData;
 	/** output data */
 	private final Set<Data> outputData;
-	private String invocScript = "";
-	/** the programming language of this task (default: bash) */
-	private final String languageLabel;
-	/** parent and child tasks (denotes the workflow structure) */
-	private final Set<TaskInstance> parentTasks;
-	private final Set<JsonReportEntry> report;
-	private final long taskId;
-	/** the name and (internal) id of the task's executable (e.g. tar) */
-	private final String taskName;
-	/** the number of times this task has been attempted */
-	private int tries = 0;
 	/** the upward rank of tasks in the workflow */
 	private double upwardRank = 0d;
-	/** the id of the workflow this task instance belongs to */
-	private final UUID workflowId;
+	private int depth = 0;
+
+	// OS and worker related
+	/** The commands to be executed by the task.
+	 * This can be a multiline string, since the contents are written to a bash script which is then executed within the YARN container. */
+	private String command;
+	private String invocScript = "";
+	/** the name and (internal) id of the task's executable (e.g. tar) */
+	private final String taskName;
+	/** The task report contains a summary of stage in and stage out times. */
+	private final Set<JsonReportEntry> report;
+	/** the programming language of this task (default: bash) */
+	private final String languageLabel;
+
+	// Execution logic
+	/** whether this task is completed yet */
+	private boolean completed;
+	/** the number of times this task has been attempted */
+	private int tries = 0;
 
 	public TaskInstance(long id, UUID workflowId, String taskName, long taskId, String languageLabel) {
 		this.id = id;
@@ -165,6 +144,7 @@ public class TaskInstance implements Comparable<TaskInstance> {
 			File script = new File(String.valueOf(getId()));
 			try (BufferedWriter scriptWriter = new BufferedWriter(new FileWriter(script))) {
 				scriptWriter.write(getCommand());
+				/* log */ if(HiWayConfiguration.debug) WorkflowDriver.writeToStdout(String.format("Writing task %s script contents %s",this.id, getCommand().replace('\n','-')));
 			} catch (IOException e) {
 				e.printStackTrace(System.out);
 				System.exit(-1);
@@ -314,9 +294,45 @@ public class TaskInstance implements Comparable<TaskInstance> {
 		this.upwardRank = upwardRank;
 	}
 
+	/** This is the name given to the container running the task.
+	 * It is useful for obtaining resource usage statistics from the cadvisor service.
+	 * This can be used, e.g., in {@link de.huberlin.wbi.hiway.am.NMCallbackHandler#onContainerStatusReceived(ContainerId, ContainerStatus)} */
+	public String getDockerContainerName() {
+		return String.format("%s_%s", getWorkflowId(), getId());
+	}
+
 	@Override
 	public String toString() {
 		return id + " [" + taskName + "]";
 	}
 
+	private static class Comparators {
+
+		public static Comparator<TaskInstance> DEPTH = new Comparator<TaskInstance>() {
+			@Override
+			public int compare(TaskInstance task1, TaskInstance task2) {
+				try {
+					return Integer.compare(task1.getDepth(), task2.getDepth());
+				} catch (WorkflowStructureUnknownException e) {
+					e.printStackTrace(System.out);
+					System.exit(1);
+					throw new RuntimeException(e);
+				}
+			}
+		};
+
+		public static Comparator<TaskInstance> UPWARDSRANK = new Comparator<TaskInstance>() {
+			@Override
+			public int compare(TaskInstance task1, TaskInstance task2) {
+				try {
+					return -Double.compare(task1.getUpwardRank(), task2.getUpwardRank());
+				} catch (WorkflowStructureUnknownException e) {
+					e.printStackTrace(System.out);
+					System.exit(1);
+					throw new RuntimeException(e);
+				}
+			}
+		};
+
+	}
 }

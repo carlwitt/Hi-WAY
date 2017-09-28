@@ -52,26 +52,26 @@ public class HiWayConfiguration extends YarnConfiguration {
 		cuneiformE, cuneiformJ, dax, galaxy, log
 	}
 
-	public static final String HIWAY_AM_APPLICATION_TYPE = "hiway.am.application.type";
+	static final String HIWAY_AM_APPLICATION_TYPE = "hiway.am.application.type";
 
-	public static final String HIWAY_AM_APPLICATION_TYPE_DEFAULT = "Hi-WAY";
+	static final String HIWAY_AM_APPLICATION_TYPE_DEFAULT = "Hi-WAY";
 	public static final String HIWAY_AM_DIRECTORY_BASE = "hiway.am.directory.base";
 
 	public static final String HIWAY_AM_DIRECTORY_BASE_DEFAULT = "/";
 	public static final String HIWAY_AM_DIRECTORY_CACHE = "hiway.am.directory.cache";
 	public static final String HIWAY_AM_DIRECTORY_CACHE_DEFAULT = "hiway";
-	public static final String HIWAY_AM_MEMORY = "hiway.am.memory";
-	public static final int HIWAY_AM_MEMORY_DEFAULT = 1024;
-	public static final String HIWAY_AM_PRIORITY = "hiway.am.priority";
-	public static final int HIWAY_AM_PRIORITY_DEFAULT = 0;
-	public static final String HIWAY_AM_QUEUE = "hiway.am.queue";
-	public static final String HIWAY_AM_QUEUE_DEFAULT = "default";
+	static final String HIWAY_AM_MEMORY = "hiway.am.memory";
+	static final int HIWAY_AM_MEMORY_DEFAULT = 1024;
+	static final String HIWAY_AM_PRIORITY = "hiway.am.priority";
+	static final int HIWAY_AM_PRIORITY_DEFAULT = 0;
+	static final String HIWAY_AM_QUEUE = "hiway.am.queue";
+	static final String HIWAY_AM_QUEUE_DEFAULT = "default";
 	public static final String HIWAY_AM_TASK_RETRIES = "hiway.am.task.retries";
 	public static final int HIWAY_AM_TASK_RETRIES_DEFAULT = 1;
-	public static final String HIWAY_AM_TIMEOUT = "hiway.am.timeout";
-	public static final int HIWAY_AM_TIMEOUT_DEFAULT = 604800;
-	public static final String HIWAY_AM_VCORES = "hiway.am.vcores";
-	public static final int HIWAY_AM_VCORES_DEFAULT = 1;
+	static final String HIWAY_AM_TIMEOUT = "hiway.am.timeout";
+	static final int HIWAY_AM_TIMEOUT_DEFAULT = 604800;
+	static final String HIWAY_AM_VCORES = "hiway.am.vcores";
+	static final int HIWAY_AM_VCORES_DEFAULT = 1;
 	public static final String HIWAY_DB_NOSQL_BUCKET = "hiway.db.nosql.bucket";
 	public static final String HIWAY_DB_NOSQL_PASSWORD = "hiway.db.nosql.password";
 	public static final String HIWAY_DB_NOSQL_URLS = "hiway.db.nosql.urls";
@@ -89,6 +89,7 @@ public class HiWayConfiguration extends YarnConfiguration {
 
 	public static final String HIWAY_WORKER_MEMORY = "hiway.worker.memory";
 
+	/** Megabytes **/
 	public static final int HIWAY_WORKER_MEMORY_DEFAULT = 1024;
 
 	public static final String HIWAY_WORKER_PRIORITY = "hiway.worker.priority";
@@ -97,19 +98,23 @@ public class HiWayConfiguration extends YarnConfiguration {
 	public static final String HIWAY_WORKER_SHELL_ENV_DEFAULT = "";
 	public static final String HIWAY_WORKER_VCORES = "hiway.worker.vcores";
 	public static final int HIWAY_WORKER_VCORES_DEFAULT = 1;
-	public static final String HIWAY_WORKFLOW_LANGUAGE_CUNEIFORME_AM_CLASS = "de.huberlin.wbi.hiway.am.cuneiforme.CuneiformEApplicationMaster";
+	static final String HIWAY_WORKFLOW_LANGUAGE_CUNEIFORME_AM_CLASS = "de.huberlin.wbi.hiway.am.cuneiforme.CuneiformEApplicationMaster";
 	public static final String HIWAY_WORKFLOW_LANGUAGE_CUNEIFORME_WORKER_CLASS = "de.huberlin.wbi.hiway.am.cuneiforme.CuneiformEWorker";
 	public static final String HIWAY_WORKFLOW_LANGUAGE_CUNEIFORME_SERVER_IP = "hiway.cuneiform.server.ip";
-	public static final String HIWAY_WORKFLOW_LANGUAGE_CUNEIFORMJ_AM_CLASS = "de.huberlin.wbi.hiway.am.cuneiformj.CuneiformJApplicationMaster";
+
+	/** */
+	public static final String HIWAY_MONITORING_CADVISOR_PORT = "hiway.monitoring.cadvisor.port";
+
+	static final String HIWAY_WORKFLOW_LANGUAGE_CUNEIFORMJ_AM_CLASS = "de.huberlin.wbi.hiway.am.cuneiformj.CuneiformJApplicationMaster";
 	public static final String HIWAY_WORKFLOW_LANGUAGE_CUNEIFORMJ_WORKER_CLASS = "de.huberlin.wbi.hiway.common.Worker";
 
-	public static final String HIWAY_WORKFLOW_LANGUAGE_DAX_AM_CLASS = "de.huberlin.wbi.hiway.am.dax.DaxApplicationMaster";
+	static final String HIWAY_WORKFLOW_LANGUAGE_DAX_AM_CLASS = "de.huberlin.wbi.hiway.am.dax.DaxApplicationMaster";
 	public static final String HIWAY_WORKFLOW_LANGUAGE_DAX_WORKER_CLASS = "de.huberlin.wbi.hiway.common.Worker";
-	public static final Map<String, HIWAY_WORKFLOW_LANGUAGE_OPTS> HIWAY_WORKFLOW_LANGUAGE_EXTS;
-	public static final String HIWAY_WORKFLOW_LANGUAGE_GALAXY_AM_CLASS = "de.huberlin.wbi.hiway.am.galaxy.GalaxyApplicationMaster";
+	static final Map<String, HIWAY_WORKFLOW_LANGUAGE_OPTS> HIWAY_WORKFLOW_LANGUAGE_EXTS;
+	static final String HIWAY_WORKFLOW_LANGUAGE_GALAXY_AM_CLASS = "de.huberlin.wbi.hiway.am.galaxy.GalaxyApplicationMaster";
 
 	public static final String HIWAY_WORKFLOW_LANGUAGE_GALAXY_WORKER_CLASS = "de.huberlin.wbi.hiway.common.Worker";
-	public static final String HIWAY_WORKFLOW_LANGUAGE_LOG_AM_CLASS = "de.huberlin.wbi.hiway.am.log.LogApplicationMaster";
+	static final String HIWAY_WORKFLOW_LANGUAGE_LOG_AM_CLASS = "de.huberlin.wbi.hiway.am.log.LogApplicationMaster";
 	public static final String HIWAY_WORKFLOW_LANGUAGE_LOG_WORKER_CLASS = "de.huberlin.wbi.hiway.common.Worker";
 
 	public static boolean debug = false;
