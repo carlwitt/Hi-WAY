@@ -91,7 +91,7 @@ public abstract class WorkflowScheduler {
 	/** a queue of nodes on which containers are to be requested */
 	protected final Queue<ContainerRequest> unissuedContainerRequests;
 	private final String workflowName;
-	/** Default amount of memory per container. */
+	/** Default amount of memory per YARN container. */
 	protected int containerMemoryMegaBytes;
 	protected Map<String, Integer> customMemoryMap;
 	private int containerCores;
@@ -116,7 +116,6 @@ public abstract class WorkflowScheduler {
 		this.requestPriority = requestPriority_;
 	}
 
-	/**  */
 	protected ContainerRequest setupContainerAskForRM(String[] nodes, int memoryMegaBytes) {
 		// set the priority for the request
 
@@ -155,6 +154,7 @@ public abstract class WorkflowScheduler {
 		return unissuedContainerRequests.remove();
 	}
 
+	/** offer a YARN resource container to the scheduler to get a task back to run in the container. */
 	public abstract TaskInstance getTask(Container container);
 
 	protected Set<String> getNodeIds() {
@@ -275,6 +275,7 @@ public abstract class WorkflowScheduler {
 		return getNumberOfReadyTasks() == 0;
 	}
 
+	/** scan prior workflow execution for performance information that can be used to schedule the current workflow */
 	private void parseLogs() {
 		String hdfsBaseDirectoryName = conf.get(HiWayConfiguration.HIWAY_AM_DIRECTORY_BASE, HiWayConfiguration.HIWAY_AM_DIRECTORY_BASE_DEFAULT);
 		String hdfsSandboxDirectoryName = conf.get(HiWayConfiguration.HIWAY_AM_DIRECTORY_CACHE, HiWayConfiguration.HIWAY_AM_DIRECTORY_CACHE_DEFAULT);

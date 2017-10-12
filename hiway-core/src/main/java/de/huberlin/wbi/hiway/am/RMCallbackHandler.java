@@ -6,8 +6,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 
 import de.huberlin.wbi.hiway.common.HiWayInvocation;
 import org.apache.hadoop.yarn.api.records.Container;
@@ -67,42 +65,56 @@ class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 		return (totalTasks == 0) ? 0 : (float) am.getNumCompletedContainers().get() / totalTasks;
 	}
 
-	private void launchTask(TaskInstance task, Container allocatedContainer) {
-		containerIdToInvocation.put(allocatedContainer.getId(), new HiWayInvocation(task));
-		am.taskInstanceByContainer.putIfAbsent(allocatedContainer, task);
-
-		LaunchContainerRunnable runnableLaunchContainer = new LaunchContainerRunnable(allocatedContainer, am.getContainerListener(), task, am);
-		Thread launchThread = new Thread(runnableLaunchContainer);
-
-		/* launch and start the container on a separate thread to keep the main thread unblocked as all containers may not be allocated at one go. */
-		am.getLaunchThreads().add(launchThread);
-		launchThread.start();
-	}
-
+	/** Offers free containers to the schedule to receive tasks to run in the container.
+	 * Called after having received containers in {@link #onContainersAllocated(List)} */
 	private void launchTasks() {
 		while (!containerQueue.isEmpty() && !am.getScheduler().nothingToSchedule()) {
+
 			Container allocatedContainer = containerQueue.remove();
 
-			long tic = System.currentTimeMillis();
-			TaskInstance task = am.getScheduler().getTask(allocatedContainer);
-			long toc = System.currentTimeMillis();
+			/* accounting */ long tic = System.currentTimeMillis();
 
-			if (task.getTries() == 1) {
-				JSONObject obj = new JSONObject();
-				try {
-					obj.put(JsonReportEntry.LABEL_REALTIME, Long.toString(toc - tic));
-				} catch (JSONException e) {
-					onError(e);
-				}
-				task.getReport().add(
-						new JsonReportEntry(task.getWorkflowId(), task.getTaskId(), task.getTaskName(), task.getLanguageLabel(), task.getId(),
-								null, HiwayDBI.KEY_INVOC_TIME_SCHED, obj));
-				task.getReport().add(
-						new JsonReportEntry(task.getWorkflowId(), task.getTaskId(), task.getTaskName(), task.getLanguageLabel(), task.getId(),
-								null, HiwayDBI.KEY_INVOC_HOST, allocatedContainer.getNodeId().getHost()));
-			}
-			launchTask(task, allocatedContainer);
+			TaskInstance task = am.getScheduler().getTask(allocatedContainer);
+
+			/* accounting */ long toc = System.currentTimeMillis();
+
+			/* log */ if (task.getTries() == 1) addTaskRuntimeToTaskReport(allocatedContainer, tic, task, toc);
+
+			containerIdToInvocation.put(allocatedContainer.getId(), new HiWayInvocation(task));
+			am.taskInstanceByContainer.putIfAbsent(allocatedContainer, task);
+
+			// launch and start the container on a separate thread to keep the main thread unblocked and parallelize the overhead
+			LaunchContainerRunnable runnableLaunchContainer = new LaunchContainerRunnable(allocatedContainer, am.getContainerListener(), task, am);
+			Thread launchThread = new Thread(runnableLaunchContainer);
+			am.getLaunchThreads().add(launchThread);
+			launchThread.start();
 		}
+	}
+
+	private void addTaskRuntimeToTaskReport(Container allocatedContainer, long tic, TaskInstance task, long toc) {
+		JSONObject obj = new JSONObject();
+		try {
+            obj.put(JsonReportEntry.LABEL_REALTIME, Long.toString(toc - tic));
+        } catch (JSONException e) {
+            onError(e);
+        }
+		task.getReport().add( new JsonReportEntry(
+				task.getWorkflowId(),
+				task.getTaskId(),
+				task.getTaskName(),
+				task.getLanguageLabel(),
+				task.getId(),
+				null,
+				HiwayDBI.KEY_INVOC_TIME_SCHED,
+				obj));
+		task.getReport().add( new JsonReportEntry(task.getWorkflowId(),
+				task.getTaskId(),
+				task.getTaskName(),
+				task.getLanguageLabel(),
+				task.getId(),
+				null,
+				HiwayDBI.KEY_INVOC_HOST,
+				allocatedContainer.getNodeId().getHost()));
 	}
 
 	/**
@@ -112,14 +124,11 @@ class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 	@SuppressWarnings("unchecked")
 	@Override
 	public void onContainersAllocated(List<Container> allocatedContainers) {
-		if (HiWayConfiguration.verbose) {
-			for (Container container : allocatedContainers) {
-				WorkflowDriver.writeToStdout("Allocated container " + container.getId().getContainerId() + " on node " + container.getNodeId().getHost()
-						+ " with capability " + container.getResource().getVirtualCores() + ":" + container.getResource().getMemory());
-			}
-		}
+
+		/* log */ if (HiWayConfiguration.verbose) for (Container container : allocatedContainers) WorkflowDriver.writeToStdout("Allocated container " + container.getId().getContainerId() + " on node " + container.getNodeId().getHost() + " with capability " + container.getResource().getVirtualCores() + ":" + container.getResource().getMemory());
 
 		for (Container container : allocatedContainers) {
+
 			/* log */ logHiwayEventContainerAllocated(container);
 
 			ContainerRequest request = findFirstMatchingRequest(container);

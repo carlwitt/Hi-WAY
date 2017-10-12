@@ -42,11 +42,7 @@ import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Vector;
+import java.util.*;
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.GnuParser;
@@ -152,16 +148,16 @@ public class Client {
 		conf = new HiWayConfiguration();
 		yarnClient = YarnClient.createYarnClient();
 		yarnClient.init(conf);
-		opts = new Options();
+		opts = getOptions();
+	}
+
+	private static Options getOptions() {
+		Options opts = new Options();
 		opts.addOption("w", "workflow", false, "(Deprecated) The workflow file to be executed by the Application Master.");
 		opts.addOption("u", "summary", true, "The name of the json summary file. No file is created if this parameter is not specified.");
 		opts.addOption("m", "memory", true, "The amount of memory (in MB) to be allocated per worker container. Overrides settings in hiway-site.xml.");
 		opts.addOption("c", "custom", true, "The name of an (optional) JSON file, in which custom amounts of memory can be specified per task.");
-		StringBuilder schedulers = new StringBuilder();
-		for (HiWayConfiguration.HIWAY_SCHEDULER_OPTS policy : HiWayConfiguration.HIWAY_SCHEDULER_OPTS.values()) {
-			schedulers.append(", ").append(policy.toString());
-		}
-		opts.addOption("s", "scheduler", true, "The scheduling policy that is to be employed. Valid arguments: " + schedulers.substring(2) + "."
+		opts.addOption("s", "scheduler", true, "The scheduling policy that is to be employed. Valid arguments: " + Arrays.toString(HiWayConfiguration.HIWAY_SCHEDULER_OPTS.values()) + "."
 				+ " Overrides settings in hiway-site.xml.");
 		StringBuilder workflowFormats = new StringBuilder();
 		for (HiWayConfiguration.HIWAY_WORKFLOW_LANGUAGE_OPTS language : HiWayConfiguration.HIWAY_WORKFLOW_LANGUAGE_OPTS.values()) {
@@ -172,6 +168,7 @@ public class Client {
 		opts.addOption("v", "verbose", false, "Increase verbosity of output / reporting.");
 		opts.addOption("d", "debug", false, "Provide additional logs and information for debugging");
 		opts.addOption("h", "help", false, "Print usage");
+		return opts;
 	}
 
 	/**
@@ -191,51 +188,50 @@ public class Client {
 	 * @param args Parsed command line options.
 	 * @return Whether the init was successful to run the client.
 	 */
-    private boolean init(String[] args) throws ParseException {
-
-		try {
-			hdfs = FileSystem.get(conf);
-		} catch (IOException e) {
-			e.printStackTrace(System.out);
-			System.exit(-1);
-		}
+    private boolean init(String[] args) throws ParseException, IllegalArgumentException {
 
 		CommandLine cliParser = new GnuParser().parse(opts, args);
 
-		if (args.length == 0) {
-			throw new IllegalArgumentException("No args specified for client to initialize.");
-		}
-
-		if (cliParser.hasOption("help")) {
+		if (cliParser.hasOption("help") || cliParser.getArgs().length == 0) {
 			printUsage();
 			System.exit(0);
 		}
-		
-		if (cliParser.getArgs().length == 0) {
-			throw new IllegalArgumentException("No workflow file specified.");
-		}
 
-		if (cliParser.hasOption("debug")) {
-		  HiWayConfiguration.debug = true;
-		}
+		workflowParam = cliParser.getArgs()[0];
 
-		if (cliParser.hasOption("verbose")) {
-			HiWayConfiguration.verbose = true;
-		}
-
+		// load configuration options, or fallback to defaults; check values for sanity
 		amPriority = conf.getInt(HiWayConfiguration.HIWAY_AM_PRIORITY, HiWayConfiguration.HIWAY_AM_PRIORITY_DEFAULT);
 		amQueue = conf.get(HiWayConfiguration.HIWAY_AM_QUEUE, HiWayConfiguration.HIWAY_AM_QUEUE_DEFAULT);
-		
 		amVCores = conf.getInt(HiWayConfiguration.HIWAY_AM_VCORES, HiWayConfiguration.HIWAY_AM_VCORES_DEFAULT);
-		if (amVCores <= 0) {
-			throw new IllegalArgumentException("Invalid vCores specified for application master, exiting." + " Specified vCores=" + amVCores);
-		}
-		
+		if (amVCores <= 0) throw new IllegalArgumentException("Invalid vCores specified for application master, exiting." + " Specified vCores=" + amVCores);
 		amMemory = conf.getInt(HiWayConfiguration.HIWAY_AM_MEMORY, HiWayConfiguration.HIWAY_AM_MEMORY_DEFAULT);
-		if (amMemory <= 0) {
-			throw new IllegalArgumentException("Invalid memory specified for application master, exiting." + " Specified memory=" + amMemory);
+		if (amMemory <= 0) throw new IllegalArgumentException("Invalid memory specified for application master, exiting." + " Specified memory=" + amMemory);
+		schedulerName = HiWayConfiguration.HIWAY_SCHEDULER_OPTS.valueOf(conf.get(HiWayConfiguration.HIWAY_SCHEDULER,HiWayConfiguration.HIWAY_SCHEDULER_DEFAULT.toString()));
+		schedulerName = HiWayConfiguration.HIWAY_SCHEDULER_OPTS.valueOf(conf.get(HiWayConfiguration.HIWAY_SCHEDULER,HiWayConfiguration.HIWAY_SCHEDULER_DEFAULT.toString()));
+		clientTimeout = conf.getInt(HiWayConfiguration.HIWAY_AM_TIMEOUT, HiWayConfiguration.HIWAY_AM_TIMEOUT_DEFAULT) * 1000;
+		for (String extension : HiWayConfiguration.HIWAY_WORKFLOW_LANGUAGE_EXTS.keySet()) {
+			if (workflowParam.endsWith(extension)) {
+				workflowType = HiWayConfiguration.HIWAY_WORKFLOW_LANGUAGE_EXTS.get(extension);
+				break;
+			}
+		}
+		if(workflowType == null){
+			throw new IllegalArgumentException("Workflow file extension is not supported: " + workflowParam + "\nTry: " + Arrays.toString(HiWayConfiguration.HIWAY_WORKFLOW_LANGUAGE_EXTS.keySet().toArray(new String[]{})));
 		}
 
+		// get command line arguments
+		// execution specifics
+		if (cliParser.hasOption("memory")) memory = cliParser.getOptionValue("memory");
+		if (cliParser.hasOption("language")) workflowType = HiWayConfiguration.HIWAY_WORKFLOW_LANGUAGE_OPTS.valueOf(cliParser.getOptionValue("language", HiWayConfiguration.HIWAY_WORKFLOW_LANGUAGE_OPTS.cuneiformE.toString()));
+		if (cliParser.hasOption("scheduler")) schedulerName = HiWayConfiguration.HIWAY_SCHEDULER_OPTS.valueOf(cliParser.getOptionValue("scheduler"));
+		if (cliParser.hasOption("custom")) {
+			if (!schedulerName.equals(HiWayConfiguration.HIWAY_SCHEDULER_OPTS.memoryAware)) {
+				System.out.println("The memory-aware scheduler has to be selected if a custom memory file is to be used. Aborting.");
+				System.exit(-1);
+			}
+			customMemPath = cliParser.getOptionValue("custom");
+		}
+		// output
 		if (cliParser.hasOption("summary")) {
 			try {
 				summaryPath = new Path(new File(cliParser.getOptionValue("summary")).getCanonicalPath());
@@ -244,46 +240,17 @@ public class Client {
 				System.exit(-1);
 			}
 		}
+		// developer
+		if (cliParser.hasOption("debug")) HiWayConfiguration.debug = true;
+		if (cliParser.hasOption("verbose")) HiWayConfiguration.verbose = true;
 
-		if (cliParser.hasOption("memory")) {
-			memory = cliParser.getOptionValue("memory");
+		// check that the HDFS is okay (?)
+		try {
+			hdfs = FileSystem.get(conf);
+		} catch (IOException e) {
+			e.printStackTrace(System.out);
+			System.exit(-1);
 		}
-
-		schedulerName = HiWayConfiguration.HIWAY_SCHEDULER_OPTS.valueOf(conf.get(HiWayConfiguration.HIWAY_SCHEDULER,
-				HiWayConfiguration.HIWAY_SCHEDULER_DEFAULT.toString()));
-		if (cliParser.hasOption("scheduler")) {
-			schedulerName = HiWayConfiguration.HIWAY_SCHEDULER_OPTS.valueOf(cliParser.getOptionValue("scheduler"));
-		}
-		
-		if (cliParser.hasOption("custom")) {
-			if (!schedulerName.equals(HiWayConfiguration.HIWAY_SCHEDULER_OPTS.memoryAware)) {
-				System.out.println("The memory-aware scheduler has to be selected if a custom memory file is to be used. Aborting.");
-				System.exit(-1);
-			}
-			customMemPath = cliParser.getOptionValue("custom");
-		}
-		
-		schedulerName = HiWayConfiguration.HIWAY_SCHEDULER_OPTS.valueOf(conf.get(HiWayConfiguration.HIWAY_SCHEDULER,
-				HiWayConfiguration.HIWAY_SCHEDULER_DEFAULT.toString()));
-		if (cliParser.hasOption("scheduler")) {
-			schedulerName = HiWayConfiguration.HIWAY_SCHEDULER_OPTS.valueOf(cliParser.getOptionValue("scheduler"));
-		}
-
-		workflowParam = cliParser.getArgs()[0];
-
-		if (cliParser.hasOption("language")) {
-			workflowType = HiWayConfiguration.HIWAY_WORKFLOW_LANGUAGE_OPTS.valueOf(cliParser.getOptionValue("language",
-					HiWayConfiguration.HIWAY_WORKFLOW_LANGUAGE_OPTS.cuneiformE.toString()));
-		} else {
-			for (String extension : HiWayConfiguration.HIWAY_WORKFLOW_LANGUAGE_EXTS.keySet()) {
-				if (workflowParam.endsWith(extension)) {
-					workflowType = HiWayConfiguration.HIWAY_WORKFLOW_LANGUAGE_EXTS.get(extension);
-					break;
-				}
-			}
-		}
-
-		clientTimeout = conf.getInt(HiWayConfiguration.HIWAY_AM_TIMEOUT, HiWayConfiguration.HIWAY_AM_TIMEOUT_DEFAULT) * 1000;
 
 		return true;
 	}
@@ -345,30 +312,23 @@ public class Client {
 	 * @return true if application completed successfully.
 	 */
     private boolean run() throws IOException, YarnException {
-		System.out.println("Running Client");
-		yarnClient.start();
 
+    	/* log */ System.out.println("Running Client");
+
+    	yarnClient.start();
 		YarnClusterMetrics clusterMetrics = yarnClient.getYarnClusterMetrics();
-		System.out.println("Got Cluster metric info from ASM" + ", numNodeManagers=" + clusterMetrics.getNumNodeManagers());
+
+		/* log */ System.out.println("Got Cluster metric info from ASM" + ", numNodeManagers=" + clusterMetrics.getNumNodeManagers());
 
 		List<NodeReport> clusterNodeReports = yarnClient.getNodeReports(NodeState.RUNNING);
-		System.out.println("Got Cluster node info from ASM");
-		for (NodeReport node : clusterNodeReports) {
-			System.out.println("Got node report from ASM for" + ", nodeId=" + node.getNodeId() + ", nodeAddress" + node.getHttpAddress() + ", nodeRackName"
-					+ node.getRackName() + ", nodeNumContainers" + node.getNumContainers());
-		}
+		/* log */ System.out.println("Got Cluster node info from ASM");
+		/* log */ for (NodeReport node : clusterNodeReports) System.out.println("Got node report from ASM for" + ", nodeId=" + node.getNodeId() + ", nodeAddress" + node.getHttpAddress() + ", nodeRackName" + node.getRackName() + ", nodeNumContainers" + node.getNumContainers());
 
 		QueueInfo queueInfo = yarnClient.getQueueInfo(this.amQueue);
-		System.out.println("Queue info" + ", queueName=" + queueInfo.getQueueName() + ", queueCurrentCapacity=" + queueInfo.getCurrentCapacity()
-				+ ", queueMaxCapacity=" + queueInfo.getMaximumCapacity() + ", queueApplicationCount=" + queueInfo.getApplications().size()
-				+ ", queueChildQueueCount=" + queueInfo.getChildQueues().size());
+		/* log */ System.out.println("Queue info" + ", queueName=" + queueInfo.getQueueName() + ", queueCurrentCapacity=" + queueInfo.getCurrentCapacity() + ", queueMaxCapacity=" + queueInfo.getMaximumCapacity() + ", queueApplicationCount=" + queueInfo.getApplications().size() + ", queueChildQueueCount=" + queueInfo.getChildQueues().size());
 
 		List<QueueUserACLInfo> listAclInfo = yarnClient.getQueueAclsInfo();
-		for (QueueUserACLInfo aclInfo : listAclInfo) {
-			for (QueueACL userAcl : aclInfo.getUserAcls()) {
-				System.out.println("User ACL Info for Queue" + ", queueName=" + aclInfo.getQueueName() + ", userAcl=" + userAcl.name());
-			}
-		}
+		/* log */ for (QueueUserACLInfo aclInfo : listAclInfo) for (QueueACL userAcl : aclInfo.getUserAcls()) System.out.println("User ACL Info for Queue" + ", queueName=" + aclInfo.getQueueName() + ", userAcl=" + userAcl.name());
 
 		// Get a new application id
 		YarnClientApplication app = yarnClient.createApplication();
@@ -376,18 +336,16 @@ public class Client {
 
 		// Get min/max resource capabilities from RM and change memory ask if needed
 		int maxVC = appResponse.getMaximumResourceCapability().getVirtualCores();
-		System.out.println("Max vCores capabililty of resources in this cluster " + maxVC);
+		/* log */ System.out.println("Max vCores capabililty of resources in this cluster " + maxVC);
 		int maxMem = appResponse.getMaximumResourceCapability().getMemory();
-		System.out.println("Max mem capabililty of resources in this cluster " + maxMem);
-
+		/* log */ System.out.println("Max mem capabililty of resources in this cluster " + maxMem);
 		// A resource ask cannot exceed the max.
 		if (amVCores > maxVC) {
-			System.out.println("AM vCores specified above max threshold of cluster. Using max value." + ", specified=" + amVCores + ", max=" + maxVC);
+			/* log */ System.out.println("AM vCores specified above max threshold of cluster. Using max value." + ", specified=" + amVCores + ", max=" + maxVC);
 			amVCores = maxVC;
 		}
-		
 		if (amMemory > maxMem) {
-			System.out.println("AM memory specified above max threshold of cluster. Using max value." + ", specified=" + amMemory + ", max=" + maxMem);
+			/* log */ System.out.println("AM memory specified above max threshold of cluster. Using max value." + ", specified=" + amMemory + ", max=" + maxMem);
 			amMemory = maxMem;
 		}
 
@@ -422,40 +380,7 @@ public class Client {
 
 		// (2) if galaxy workflow, then copy and replace input ports
 		if (workflowType.equals(HiWayConfiguration.HIWAY_WORKFLOW_LANGUAGE_OPTS.galaxy)) {
-			List<String> lines = new ArrayList<>();
-			try (BufferedReader reader = new BufferedReader(new FileReader(wfTemp == null ? wfSource.toString() : wfTemp.toString()))) {
-				String line;
-				while ((line = reader.readLine()) != null) {
-					if (line.contains("\"name\": \"Input dataset\"")) {
-						String inputLine = lines.get(lines.size() - 3);
-						String portName = inputLine.substring(inputLine.indexOf("\"name\": \"") + 9, inputLine.lastIndexOf("\""));
-
-						System.out.println("Enter file location in HDFS for Galaxy workflow input port \"" + portName
-								+ "\". Press return or wait 30 seconds to use default value \"" + portName + "\".");
-						BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
-						long startTime = System.currentTimeMillis();
-						while ((System.currentTimeMillis() - startTime) < 30 * 1000 && !in.ready()) {
-						}
-
-						if (in.ready()) {
-							String newPortName = in.readLine();
-							if (newPortName.length() > 0) {
-								inputLine = inputLine.replace(portName, newPortName);
-								lines.set(lines.size() - 3, inputLine);
-							}
-						}
-					}
-					lines.add(line);
-				}
-			}
-
-			wfTemp = new Path("./." + wfSource.getName());
-			try (BufferedWriter writer = new BufferedWriter(new FileWriter(wfTemp.toString()))) {
-				for (String line : lines) {
-					writer.write(line);
-					writer.newLine();
-				}
-			}
+			wfTemp = preProcessGalaxyWorkflow(wfSource, wfTemp);
 		}
 
 		if (wfTemp != null) {
@@ -465,11 +390,8 @@ public class Client {
 			hdfs.copyFromLocalFile(wfSource, wfDest);
 		}
 
-		if (summaryPath != null)
-			summary = new Data(summaryPath);
-		
-		if (customMemPath != null) 
-			(new Data(customMemPath)).stageOut();
+		if (summaryPath != null) summary = new Data(summaryPath);
+		if (customMemPath != null) (new Data(customMemPath)).stageOut();
 
 		// Set up the container launch context for the application master
 		ContainerLaunchContext amContainer = Records.newRecord(ContainerLaunchContext.class);
@@ -525,29 +447,12 @@ public class Client {
 		}
 
 		vargs.add("--scheduler " + schedulerName.toString());
-
-		if (memory != null) {
-			vargs.add("--memory " + memory);
-		}
-
-		if (summary != null) {
-			vargs.add("--summary " + summary.getName());
-		}
-		
-		if (customMemPath != null) {
-			vargs.add("--custom " + customMemPath);
-		}
-
+		if (memory != null) vargs.add("--memory " + memory);
+		if (summary != null) vargs.add("--summary " + summary.getName());
+		if (customMemPath != null) vargs.add("--custom " + customMemPath);
 		vargs.add("--appid " + appId.toString());
-
-		if (HiWayConfiguration.debug) {
-			vargs.add("--debug");
-		}
-
-		if (HiWayConfiguration.verbose) {
-			vargs.add("--verbose");
-		}
-
+		if (HiWayConfiguration.debug) vargs.add("--debug");
+		if (HiWayConfiguration.verbose) vargs.add("--verbose");
 		vargs.add(workflowParam);
 		vargs.add("> >(tee AppMaster.stdout " + ApplicationConstants.LOG_DIR_EXPANSION_VAR + "/AppMaster.stdout)");
 		vargs.add("2> >(tee AppMaster.stderr " + ApplicationConstants.LOG_DIR_EXPANSION_VAR + "/AppMaster.stderr >&2)");
@@ -602,7 +507,7 @@ public class Client {
 		appContext.setQueue(amQueue);
 
 		// Submit the application to the applications manager
-		System.out.println("Submitting application to ASM");
+		/* log */ System.out.println("Submitting application to ASM");
 		yarnClient.submitApplication(appContext);
 
 		// Monitor the application
@@ -614,6 +519,47 @@ public class Client {
 
 		return success;
 
+	}
+
+	/**
+	 * copy and replace input ports
+	 */
+	private Path preProcessGalaxyWorkflow(Path wfSource, Path wfTemp) throws IOException {
+		List<String> lines = new ArrayList<>();
+		try (BufferedReader reader = new BufferedReader(new FileReader(wfTemp == null ? wfSource.toString() : wfTemp.toString()))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.contains("\"name\": \"Input dataset\"")) {
+                    String inputLine = lines.get(lines.size() - 3);
+                    String portName = inputLine.substring(inputLine.indexOf("\"name\": \"") + 9, inputLine.lastIndexOf("\""));
+
+                    System.out.println("Enter file location in HDFS for Galaxy workflow input port \"" + portName
+                            + "\". Press return or wait 30 seconds to use default value \"" + portName + "\".");
+                    BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+                    long startTime = System.currentTimeMillis();
+                    // wait 30s
+                    while ((System.currentTimeMillis() - startTime) < 30 * 1000 && !in.ready()) {}
+
+                    if (in.ready()) {
+                        String newPortName = in.readLine();
+                        if (newPortName.length() > 0) {
+                            inputLine = inputLine.replace(portName, newPortName);
+                            lines.set(lines.size() - 3, inputLine);
+                        }
+                    }
+                }
+                lines.add(line);
+            }
+        }
+
+		wfTemp = new Path("./." + wfSource.getName());
+		try (BufferedWriter writer = new BufferedWriter(new FileWriter(wfTemp.toString()))) {
+            for (String line : lines) {
+                writer.write(line);
+                writer.newLine();
+            }
+        }
+		return wfTemp;
 	}
 
 }

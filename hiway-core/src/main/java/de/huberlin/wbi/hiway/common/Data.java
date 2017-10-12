@@ -56,38 +56,24 @@ import org.apache.hadoop.yarn.util.Records;
  * @author Carl Witt
  */
 public class Data implements Comparable<Data> {
-	private static FileSystem hdfs;
-	private static Path hdfsApplicationDirectory;
 
-	private static Path hdfsBaseDirectory;
-
-	private static final FileSystem localFs = new LocalFileSystem();
-
-	public static void setHdfs(FileSystem hdfs) {
-		Data.hdfs = hdfs;
-	}
-
-	public static void setHdfsApplicationDirectory(Path hdfsApplicationDirectory) {
-		Data.hdfsApplicationDirectory = hdfsApplicationDirectory;
-	}
-
-	public static void setHdfsBaseDirectory(Path hdfsBaseDirectory) {
-		Data.hdfsBaseDirectory = hdfsBaseDirectory;
-	}
-
-	private String containerId;
-
+	/** independent of local/distributed? */
 	private final String fileName;
 
+	// distributed file system
+	private static FileSystem hdfs;
+	private static Path hdfsApplicationDirectory;
+	private static Path hdfsBaseDirectory;
+	/** Not clear. But the container id is related to the directory structure in the distributed file system. */
+	private String containerId;
+
+	// local file system
+	private static final FileSystem localFs = new LocalFileSystem();
 	/** Relative path (I think) */
 	private final Path localDirectory;
 
-	// is the file output of the workflow
+	/** whether the file is the output of the workflow */
 	private boolean output;
-
-	public Data(Path localPath) {
-		this(localPath, null);
-	}
 
 	private Data(Path localPath, String containerId) {
 		this.output = false;
@@ -97,137 +83,16 @@ public class Data implements Comparable<Data> {
 		this.containerId = containerId;
 	}
 
+	public Data(Path localPath) {
+		this(localPath, null);
+	}
+
 	public Data(String localPathString) {
 		this(new Path(localPathString), null);
 	}
 
 	public Data(String localPathString, String containerId) {
 		this(new Path(localPathString), containerId);
-	}
-
-	/** Adds this object to the given map (used in the workflow driver?). */
-	public void addToLocalResourceMap(Map<String, LocalResource> localResources) throws IOException {
-		Path dest = getHdfsPath();
-
-		// Record is a Hadoop YARN util class
-		LocalResource rsrc = Records.newRecord(LocalResource.class);
-		rsrc.setType(LocalResourceType.FILE);
-		rsrc.setVisibility(LocalResourceVisibility.APPLICATION);
-		rsrc.setResource(ConverterUtils.getYarnUrlFromPath(dest));
-
-		FileStatus status = hdfs.getFileStatus(dest);
-		rsrc.setTimestamp(status.getModificationTime());
-		rsrc.setSize(status.getLen());
-
-		localResources.put(getLocalPath().toString(), rsrc);
-	}
-
-	@Override
-	public int compareTo(Data other) {
-		return this.getLocalPath().compareTo(other.getLocalPath());
-	}
-
-	public long countAvailableLocalData(Container container) throws IOException {
-		BlockLocation[] blockLocations = null;
-
-		Path hdfsLocation = getHdfsPath();
-		while (blockLocations == null) {
-			FileStatus fileStatus = hdfs.getFileStatus(hdfsLocation);
-			blockLocations = hdfs.getFileBlockLocations(hdfsLocation, 0, fileStatus.getLen());
-		}
-
-		long sum = 0;
-		for (BlockLocation blockLocation : blockLocations) {
-			for (String host : blockLocation.getHosts()) {
-				if (container.getNodeId().getHost().equals(host)) {
-					sum += blockLocation.getLength();
-					break;
-				}
-			}
-		}
-		return sum;
-	}
-
-	public long countAvailableTotalData() throws IOException {
-		Path hdfsLocation = getHdfsPath();
-		FileStatus fileStatus = hdfs.getFileStatus(hdfsLocation);
-		return fileStatus.getLen();
-	}
-
-	@Override
-	public boolean equals(Object obj) {
-		return obj instanceof Data && this.getLocalPath().equals(((Data) obj).getLocalPath());
-	}
-
-	public String getContainerId() {
-		return containerId;
-	}
-
-	public Path getHdfsPath() {
-		// if a container id has been created, this file is intermediate and will be found in the container's folder
-		if (containerId != null) {
-			return completeHdfsPath(new Path(hdfsApplicationDirectory, containerId));
-		}
-
-		// else, we should check if the file is an input file; if so, it can be found directly in the hdfs base directory
-		Path basePath = completeHdfsPath(hdfsBaseDirectory);
-		try {
-			if (hdfs.exists(basePath)) {
-				return basePath;
-			}
-		} catch (IOException e) {
-			e.printStackTrace(System.out);
-		}
-
-		// otherwise, it is fair to assume that the file will be found in the application's folder
-		return completeHdfsPath(hdfsApplicationDirectory);
-	}
-	
-	private Path completeHdfsPath(Path pathPrefix) {
-		Path directory = pathPrefix;
-		if (!localDirectory.isUriPathAbsolute())
-			directory = new Path(directory, localDirectory);
-		return new Path(directory, fileName);
-	}
-
-	/** @return Path, including file name */
-	public Path getLocalPath() {
-		return new Path(localDirectory, fileName);
-	}
-
-	/** @return Just the local directory, relative (I think) */
-	public Path getLocalBaseDir() {
-		return localDirectory;
-	}
-
-	/** @return Just the file name */
-	public String getName() {
-		return fileName;
-	}
-
-	@Override
-	public int hashCode() {
-		return this.getLocalPath().hashCode();
-	}
-
-	public boolean isOutput() {
-		return output;
-	}
-
-	private void mkHdfsDir(Path dir) throws IOException {
-		if (dir == null || hdfs.isDirectory(dir))
-			return;
-		mkHdfsDir(dir.getParent());
-		hdfs.mkdirs(dir);
-		hdfs.setPermission(dir, new FsPermission(FsAction.ALL, FsAction.ALL, FsAction.ALL));
-	}
-
-	public void setContainerId(String containerId) {
-		this.containerId = containerId;
-	}
-
-	public void setOutput(boolean output) {
-		this.output = output;
 	}
 
 	public void stageIn() throws IOException {
@@ -250,9 +115,141 @@ public class Data implements Comparable<Data> {
 		hdfs.copyFromLocalFile(false, true, localPath, hdfsPath);
 	}
 
+	/** Adds this object to the given map (used in the workflow driver?). */
+	public void addToLocalResourceMap(Map<String, LocalResource> localResources) throws IOException {
+		Path dest = getHdfsPath();
+
+		// Record is a Hadoop YARN util class
+		LocalResource rsrc = Records.newRecord(LocalResource.class);
+		rsrc.setType(LocalResourceType.FILE);
+		rsrc.setVisibility(LocalResourceVisibility.APPLICATION);
+		rsrc.setResource(ConverterUtils.getYarnUrlFromPath(dest));
+
+		FileStatus status = hdfs.getFileStatus(dest);
+		rsrc.setTimestamp(status.getModificationTime());
+		rsrc.setSize(status.getLen());
+
+		localResources.put(getLocalPath().toString(), rsrc);
+	}
+
+	long countAvailableLocalData(Container container) throws IOException {
+		BlockLocation[] blockLocations = null;
+
+		Path hdfsLocation = getHdfsPath();
+		while (blockLocations == null) {
+			FileStatus fileStatus = hdfs.getFileStatus(hdfsLocation);
+			blockLocations = hdfs.getFileBlockLocations(hdfsLocation, 0, fileStatus.getLen());
+		}
+
+		long sum = 0;
+		for (BlockLocation blockLocation : blockLocations) {
+			for (String host : blockLocation.getHosts()) {
+				if (container.getNodeId().getHost().equals(host)) {
+					sum += blockLocation.getLength();
+					break;
+				}
+			}
+		}
+		return sum;
+	}
+
+	long countAvailableTotalData() throws IOException {
+		Path hdfsLocation = getHdfsPath();
+		FileStatus fileStatus = hdfs.getFileStatus(hdfsLocation);
+		return fileStatus.getLen();
+	}
+
+
+	public Path getHdfsPath() {
+		// if a container id has been created, this file is intermediate and will be found in the container's folder
+		if (containerId != null) {
+			return completeHdfsPath(new Path(hdfsApplicationDirectory, containerId));
+		}
+
+		// else, we should check if the file is an input file; if so, it can be found directly in the hdfs base directory
+		Path basePath = completeHdfsPath(hdfsBaseDirectory);
+		try {
+			if (hdfs.exists(basePath)) {
+				return basePath;
+			}
+		} catch (IOException e) {
+			e.printStackTrace(System.out);
+		}
+
+		// otherwise, it is fair to assume that the file will be found in the application's folder
+		return completeHdfsPath(hdfsApplicationDirectory);
+	}
+
+	private Path completeHdfsPath(Path pathPrefix) {
+		Path directory = pathPrefix;
+		if (!localDirectory.isUriPathAbsolute())
+			directory = new Path(directory, localDirectory);
+		return new Path(directory, fileName);
+	}
+
+	private void mkHdfsDir(Path dir) throws IOException {
+		if (dir == null || hdfs.isDirectory(dir))
+			return;
+		mkHdfsDir(dir.getParent());
+		hdfs.mkdirs(dir);
+		hdfs.setPermission(dir, new FsPermission(FsAction.ALL, FsAction.ALL, FsAction.ALL));
+	}
+
+	/** @return Path, including file name */
+	public Path getLocalPath() {
+		return new Path(localDirectory, fileName);
+	}
+
+	/** @return Just the file name */
+	public String getName() {
+		return fileName;
+	}
+
+	public String getContainerId() {
+		return containerId;
+	}
+	public void setContainerId(String containerId) {
+		this.containerId = containerId;
+	}
+
+	public static void setHdfs(FileSystem hdfs) {
+		Data.hdfs = hdfs;
+	}
+
+	public static void setHdfsApplicationDirectory(Path hdfsApplicationDirectory) {
+		Data.hdfsApplicationDirectory = hdfsApplicationDirectory;
+	}
+
+	public static void setHdfsBaseDirectory(Path hdfsBaseDirectory) {
+		Data.hdfsBaseDirectory = hdfsBaseDirectory;
+	}
+
+	public boolean isOutput() {
+		return output;
+	}
+	public void setOutput(boolean output) {
+		this.output = output;
+	}
+
+
 	@Override
 	public String toString() {
 		return getLocalPath().toString();
+	}
+
+	@Override
+	public int compareTo(Data other) {
+		return this.getLocalPath().compareTo(other.getLocalPath());
+	}
+
+	@Override
+	public int hashCode() {
+		return this.getLocalPath().hashCode();
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		return obj instanceof Data && this.getLocalPath().equals(((Data) obj).getLocalPath());
 	}
 
 }
