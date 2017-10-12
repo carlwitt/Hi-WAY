@@ -73,11 +73,9 @@ public class Data implements Comparable<Data> {
 	private final Path localDirectory;
 
 	/** whether the file is the output of the workflow */
-	private boolean output;
+	private boolean output = false;
 
 	private Data(Path localPath, String containerId) {
-		this.output = false;
-
 		this.localDirectory = localPath.getParent();
 		this.fileName = localPath.getName();
 		this.containerId = containerId;
@@ -160,6 +158,12 @@ public class Data implements Comparable<Data> {
 	}
 
 
+	/**
+     * If a containerId is present, assume this file is in the container's directory.
+     * Falls back to HDFS basepath {@link HiWayConfiguration#HIWAY_AM_DIRECTORY_BASE_DEFAULT}.
+     * Falls back to the application's directory.
+     * @return a guess on the location of the file in HDFS
+     * **/
 	public Path getHdfsPath() {
 		// if a container id has been created, this file is intermediate and will be found in the container's folder
 		if (containerId != null) {
@@ -169,7 +173,7 @@ public class Data implements Comparable<Data> {
 		// else, we should check if the file is an input file; if so, it can be found directly in the hdfs base directory
 		Path basePath = completeHdfsPath(hdfsBaseDirectory);
 		try {
-			if (hdfs.exists(basePath)) {
+			if (hdfs.exists(new Path(basePath, fileName))) {
 				return basePath;
 			}
 		} catch (IOException e) {
@@ -195,6 +199,10 @@ public class Data implements Comparable<Data> {
 		hdfs.setPermission(dir, new FsPermission(FsAction.ALL, FsAction.ALL, FsAction.ALL));
 	}
 
+	/** @return Path of the directory in the local file system */
+	public Path getLocalDirectory(){
+		return localDirectory;
+	}
 	/** @return Path, including file name */
 	public Path getLocalPath() {
 		return new Path(localDirectory, fileName);

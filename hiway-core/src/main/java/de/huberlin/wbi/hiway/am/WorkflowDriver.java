@@ -940,6 +940,9 @@ public abstract class WorkflowDriver {
 	public static void writeToStdout(String s) {
 		System.out.println(dateFormat.format(new Date()) + " " + s);
 	}
+    public static void writeToStdErr(String s) {
+        System.err.println(dateFormat.format(new Date()) + " " + s);
+    }
 
 	/**
 	 * (Failed) attempt to create valid JSON (in contrast to {@link JsonReportEntry#toString()}, which does not quote some attribute name strings).

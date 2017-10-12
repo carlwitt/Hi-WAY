@@ -32,22 +32,28 @@
  ******************************************************************************/
 package de.huberlin.wbi.hiway.am.dax;
 
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-// is not really hadoop, just the first best tool to concat paths
-import org.apache.hadoop.fs.Path;
-
+import de.huberlin.wbi.hiway.am.WorkflowDriver;
 import de.huberlin.wbi.hiway.common.Data;
 import de.huberlin.wbi.hiway.common.TaskInstance;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.yarn.api.records.Container;
+import org.apache.hadoop.yarn.api.records.LocalResource;
+
+import java.util.*;
+
+// is not really hadoop, just the first best tool to concat paths
 
 public class DaxTaskInstance extends TaskInstance {
 
 	private final Map<Data, Long> fileSizesByte;
+	/** The amount of time to be spent in the simulated resource usage. */
 	private double runtimeSeconds = 0;
+	/** The peak amount of memory to be consumed by the simulated resource usage program. */
 	private long peakMemoryBytes = 0;
+
+	/** The memory limit on the Docker container that runs the task. This replaces YARN's resource usage monitoring and enforcement,
+	 * since resource usage of Docker containers is attributed to the Docker daemon, not the YARN container. */
+	private long containerMemoryLimitBytes;
 
 	DaxTaskInstance(UUID workflowId, String taskName) {
 		super(workflowId, taskName, Math.abs(taskName.hashCode() + 1));
@@ -67,23 +73,55 @@ public class DaxTaskInstance extends TaskInstance {
 	@Override
 	public String getCommand() {
 
-		if (runtimeSeconds > 0.) {
+		assert(runtimeSeconds > 0.);
+		assert(containerMemoryLimitBytes > 0);
 
-			StringBuilder command = new StringBuilder();
-
-			// consume memory of the specified amount
-			int memoryMegaBytes = (int) Math.ceil(peakMemoryBytes/1024/1024);
-			command.append(String.format("docker run --rm --memory=%sb --name %s -i 192.168.127.11:5000/witt/fake-executor:1.0 %s %s",  getDockerContainerName(), (int) runtimeSeconds, memoryMegaBytes));
-
-			// write fake output files of the specified size
-			// this may take some time, so the specified task runtime will be regularly exceeded
-			for (Data output : getOutputData()) {
-				command.append(String.format("; dd if=/dev/zero of=%s bs=%s count=1", output.getLocalPath(), fileSizesByte.get(output) ));
-			}
-
-			return command.toString();
+		// create commands synthetic output files
+		StringBuilder createFilesCommand = new StringBuilder();
+		for (Data output : getOutputData()) {
+			// we assume (for DAX) that all files are just plain file names (no subdirectories) and created within the containers directory
+			createFilesCommand.append(String.format("dd if=/dev/zero of=/home/%s bs=%s count=1;", output.getName(), fileSizesByte.get(output) ));
 		}
-		return super.getCommand();
+
+		// consume memory of the specified amount, limit memory usage to the YARN container size
+		String command = String.format("docker run  " +
+						// limit the containers memory by the YARN container size
+						"--memory %s --memory-swap %s " +
+						// set a name to allow the application master polling resource information about the container
+						"--name %s " +
+						// destroy container immediately after finish
+						"--rm " +
+						"-v $(pwd):/home " +
+						"--entrypoint /bin/bash " +
+						"192.168.127.11:5000/jess/stress:1.0 " +
+						// these commands are executed in the container
+						// create synthetic output files
+						"-c \"%s " +
+						// run for runtimeSeconds
+						"/usr/bin/stress --timeout %s " +
+						// consume memory, one memory worker, allocating peakMemoryBytes
+						"--vm 1 --vm-bytes %s\"",
+				containerMemoryLimitBytes,
+				containerMemoryLimitBytes,
+				getDockerContainerName(),
+				createFilesCommand.toString(),
+				(int) runtimeSeconds,
+				peakMemoryBytes);
+
+		return command;
+	}
+
+	/**
+	 * Infers the memory limit of the docker container (see {@link #getCommand()} from the amount memory allocated to the YARN container.
+	 */
+	@Override
+	public Map<String, LocalResource> buildScriptsAndSetResources(Container container) {
+
+		// inform the task about its memory limits (needed to build the command)
+		setContainerMemoryLimitBytes(container.getResource().getMemory()*1024L*1024L);
+		// this calls getCommand() which requires #containerMemoryLimitBytes to be set correctly.
+		return super.buildScriptsAndSetResources(container);
+
 	}
 
 	@Override
@@ -107,4 +145,9 @@ public class DaxTaskInstance extends TaskInstance {
 	void setPeakMemoryConsumption(long peakMemoryBytes){
 		this.peakMemoryBytes = peakMemoryBytes;
 	}
+
+	public void setContainerMemoryLimitBytes(long bytes) {
+		containerMemoryLimitBytes = bytes;
+	}
+
 }

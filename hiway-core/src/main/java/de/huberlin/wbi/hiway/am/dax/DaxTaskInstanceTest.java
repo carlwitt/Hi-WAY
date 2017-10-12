@@ -19,7 +19,8 @@ public class DaxTaskInstanceTest {
         d.setContainerMemoryLimitBytes(4*1024*1024);
         d.setPeakMemoryConsumption(3*1024*1024);
         d.setRuntimeSeconds(5);
-        d.addOutputData(new Data("/local/path/file.txt"), 12345L);
+        d.addOutputData(new Data("output-split1.txt"), 12345L);
+        d.addOutputData(new Data("output-merge.xml"), 10000L);
         System.out.println("d.getCommand() = " + d.getCommand());
     }
 
