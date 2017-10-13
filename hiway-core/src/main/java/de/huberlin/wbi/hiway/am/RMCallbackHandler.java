@@ -6,8 +6,10 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
+import java.util.concurrent.ConcurrentHashMap;
 
 import de.huberlin.wbi.hiway.common.HiWayInvocation;
+import de.huberlin.wbi.hiway.monitoring.TaskResourceConsumption;
 import org.apache.hadoop.yarn.api.records.Container;
 import org.apache.hadoop.yarn.api.records.ContainerId;
 import org.apache.hadoop.yarn.api.records.ContainerState;
@@ -34,6 +36,8 @@ class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 	private final WorkflowDriver am;
 	/** a data structure storing the invocation launched by each container **/
 	private final Map<ContainerId, HiWayInvocation> containerIdToInvocation = new HashMap<>();
+	/** Keep a reference to the runnable that started the container to stop it polling cadvisor stats. */
+	private final Map<ContainerId, LaunchContainerRunnable> containerIdToRunnable = new ConcurrentHashMap<>();
 
 	/** a queue for allocated containers that have yet to be assigned a task **/
 	private final Queue<Container> containerQueue = new LinkedList<>();
@@ -85,36 +89,11 @@ class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 
 			// launch and start the container on a separate thread to keep the main thread unblocked and parallelize the overhead
 			LaunchContainerRunnable runnableLaunchContainer = new LaunchContainerRunnable(allocatedContainer, am.getContainerListener(), task, am);
+			containerIdToRunnable.put(allocatedContainer.getId(), runnableLaunchContainer);
 			Thread launchThread = new Thread(runnableLaunchContainer);
 			am.getLaunchThreads().add(launchThread);
 			launchThread.start();
 		}
-	}
-
-	private void addTaskRuntimeToTaskReport(Container allocatedContainer, long tic, TaskInstance task, long toc) {
-		JSONObject obj = new JSONObject();
-		try {
-            obj.put(JsonReportEntry.LABEL_REALTIME, Long.toString(toc - tic));
-        } catch (JSONException e) {
-            onError(e);
-        }
-		task.getReport().add( new JsonReportEntry(
-				task.getWorkflowId(),
-				task.getTaskId(),
-				task.getTaskName(),
-				task.getLanguageLabel(),
-				task.getId(),
-				null,
-				HiwayDBI.KEY_INVOC_TIME_SCHED,
-				obj));
-		task.getReport().add( new JsonReportEntry(task.getWorkflowId(),
-				task.getTaskId(),
-				task.getTaskName(),
-				task.getLanguageLabel(),
-				task.getId(),
-				null,
-				HiwayDBI.KEY_INVOC_HOST,
-				allocatedContainer.getNodeId().getHost()));
 	}
 
 	/**
@@ -134,9 +113,7 @@ class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 			ContainerRequest request = findFirstMatchingRequest(container);
 
 			if (request != null) {
-				if (HiWayConfiguration.verbose)
-					WorkflowDriver.writeToStdout("Removing container request " + request.getNodes() + ":" + request.getCapability().getVirtualCores() + ":"
-							+ request.getCapability().getMemory());
+				/* log */ if (HiWayConfiguration.verbose) WorkflowDriver.writeToStdout(String.format("Removing container request %s:%d:%d", request.getNodes(), request.getCapability().getVirtualCores(), request.getCapability().getMemory()));
 				am.getAmRMClient().removeContainerRequest(request);
 				am.getNumAllocatedContainers().incrementAndGet();
 
@@ -144,9 +121,7 @@ class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 				containerQueue.add(container);
 
 			} else {
-				if (HiWayConfiguration.verbose)
-					WorkflowDriver.writeToStdout("Releasing container due to no matching request found. ID " + container.getId().getContainerId() + " on node " + container.getNodeId().getHost()
-							+ " with capability " + container.getResource().getVirtualCores() + ":" + container.getResource().getMemory());
+				/* log */ if (HiWayConfiguration.verbose) WorkflowDriver.writeToStdout(String.format("Releasing container due to no matching request found. ID %d on node %s with capability %d:%d", container.getId().getContainerId(), container.getNodeId().getHost(), container.getResource().getVirtualCores(), container.getResource().getMemory()));
 				am.getAmRMClient().releaseAssignedContainer(container.getId());
 			}
 		}
@@ -161,99 +136,94 @@ class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 	 */
 	@Override
 	public void onContainersCompleted(List<ContainerStatus> completedContainers) {
-		for (ContainerStatus containerStatus : completedContainers) {
 
-			/* log */ logHiwayEventContainerCompleted(containerStatus);
+		for (ContainerStatus containerStatus : completedContainers) {
 
 			// non complete containers should not be here
 			assert (containerStatus.getState() == ContainerState.COMPLETE);
 
-			// increment counters for completed/failed containers
+			// extract status information
 			int exitStatus = containerStatus.getExitStatus();
 			String diagnostics = containerStatus.getDiagnostics();
 			ContainerId containerId = containerStatus.getContainerId();
 
+			// stop monitoring, evaluate results and log them out
+			LaunchContainerRunnable runnable = containerIdToRunnable.remove(containerId);
+			runnable.getMonitor().stopMonitoring();
+			/* log */ logHiwayEventContainerCompleted(containerStatus, runnable);
+
 			// The container was released by the framework (e.g., it was a speculative copy of a finished task)
 			if (diagnostics.equals(SchedulerUtils.RELEASED_CONTAINER)) {
-				WorkflowDriver.writeToStdout("Container was released." + ", containerID=" + containerStatus.getContainerId() + ", state=" + containerStatus.getState()
-						+ ", exitStatus=" + containerStatus.getExitStatus() + ", diagnostics=" + containerStatus.getDiagnostics());
+				/* log */ WorkflowDriver.writeToStdout(String.format("Container was released. containerID=%s, state=%s, exitStatus=%d, diagnostics=%s", containerStatus.getContainerId(), containerStatus.getState(), containerStatus.getExitStatus(), containerStatus.getDiagnostics()));
 			} else if (exitStatus == ExitCode.FORCE_KILLED.getExitCode()) {
-				WorkflowDriver.writeToStdout("Container was force killed." + ", containerID=" + containerStatus.getContainerId() + ", state="
-						+ containerStatus.getState() + ", exitStatus=" + containerStatus.getExitStatus() + ", diagnostics=" + containerStatus.getDiagnostics());
+				/* log */ WorkflowDriver.writeToStdout(String.format("Container was force killed. containerID=%s, state=%s, exitStatus=%d, diagnostics=%s", containerStatus.getContainerId(), containerStatus.getState(), containerStatus.getExitStatus(), containerStatus.getDiagnostics()));
 			} else if (containerIdToInvocation.containsKey(containerId)) {
-
-				HiWayInvocation invocation = containerIdToInvocation.get(containerStatus.getContainerId());
-				TaskInstance finishedTask = invocation.task;
-
-				if (exitStatus == 0) {
-					// this task might have been completed previously (e.g., via speculative replication)
-					if (!finishedTask.isCompleted()) {
-						finishedTask.setCompleted();
-
-						am.evaluateReport(finishedTask, containerId);
-
-						for (JsonReportEntry entry : finishedTask.getReport()) {
-							am.writeEntryToLog(entry);
-						}
-
-						long runtime = System.currentTimeMillis() - invocation.timestamp;
-						JSONObject obj = new JSONObject();
-						try {
-							obj.put(JsonReportEntry.LABEL_REALTIME, Long.toString(runtime));
-						} catch (JSONException e) {
-							e.printStackTrace(System.out);
-							System.exit(-1);
-						}
-						am.writeEntryToLog(new JsonReportEntry(System.currentTimeMillis(), finishedTask.getWorkflowId(), finishedTask.getTaskId(), finishedTask
-								.getTaskName(), finishedTask.getLanguageLabel(), finishedTask.getId(), null, JsonReportEntry.KEY_INVOC_TIME, obj));
-
-						Collection<ContainerId> toBeReleasedContainers = am.getScheduler().taskCompleted(finishedTask, containerStatus, runtime);
-						for (ContainerId toBeReleasedContainer : toBeReleasedContainers) {
-							WorkflowDriver.writeToStdout("Killing speculative copy of task " + finishedTask + " on container " + toBeReleasedContainer);
-							am.getAmRMClient().releaseAssignedContainer(toBeReleasedContainer);
-							am.getNumKilledContainers().incrementAndGet();
-						}
-
-						am.getNumCompletedContainers().incrementAndGet();
-
-						am.taskSuccess(finishedTask, containerId);
-					}
-				}
-
-				// The container failed horribly.
-				else {
-
-					am.taskFailure(finishedTask, containerId);
-					am.getNumFailedContainers().incrementAndGet();
-
-					if (exitStatus == ExitCode.TERMINATED.getExitCode()) {
-						WorkflowDriver.writeToStdout("Container was terminated." + ", containerID=" + containerStatus.getContainerId() + ", state="
-								+ containerStatus.getState() + ", exitStatus=" + containerStatus.getExitStatus() + ", diagnostics="
-								+ containerStatus.getDiagnostics());
-					} else {
-						WorkflowDriver.writeToStdout("Container completed with failure." + ", containerID=" + containerStatus.getContainerId() + ", state="
-								+ containerStatus.getState() + ", exitStatus=" + containerStatus.getExitStatus() + ", diagnostics="
-								+ containerStatus.getDiagnostics());
-
-						Collection<ContainerId> toBeReleasedContainers = am.getScheduler().taskFailed(finishedTask, containerStatus);
-						for (ContainerId toBeReleasedContainer : toBeReleasedContainers) {
-							WorkflowDriver.writeToStdout("Killing speculative copy of task " + finishedTask + " on container " + toBeReleasedContainer);
-							am.getAmRMClient().releaseAssignedContainer(toBeReleasedContainer);
-							am.getNumKilledContainers().incrementAndGet();
-						}
-					}
-				}
+				finalizeRequestedContainer(containerStatus, exitStatus, containerId);
 			}
-
-			/* The container was aborted by the framework without it having been assigned an invocation (e.g., because the RM allocated more containers than
-			 * requested) */
+			// container was aborted by the framework without it having been assigned a task (e.g., because the RM allocated more containers than requested)
 			else {
-				WorkflowDriver.writeToStdout("Container failed." + ", containerID=" + containerStatus.getContainerId() + ", state=" + containerStatus.getState()
-						+ ", exitStatus=" + containerStatus.getExitStatus() + ", diagnostics=" + containerStatus.getDiagnostics());
+				/* log */ WorkflowDriver.writeToStdout(String.format("Container failed., containerID=%s, state=%s, exitStatus=%d, diagnostics=%s", containerStatus.getContainerId(), containerStatus.getState(), containerStatus.getExitStatus(), containerStatus.getDiagnostics()));
 			}
 		}
 
 		launchTasks();
+	}
+
+	/** Inform the application master about the task's outcome, release surplus containers (e.g., for speculative copies) */
+	private void finalizeRequestedContainer(ContainerStatus containerStatus, int exitStatus, ContainerId containerId) {
+
+		HiWayInvocation invocation = containerIdToInvocation.get(containerStatus.getContainerId());
+		TaskInstance finishedTask = invocation.task;
+
+		/* success (exit code of last command in {@link TaskInstance#getInvocScript()}?) */
+		if (exitStatus == 0) {
+
+			// this task might have been completed previously (e.g., via speculative replication)
+			if (finishedTask.isCompleted()) {
+				return;
+			}
+
+			finishedTask.setCompleted();
+
+			// hand over task report to application master
+			am.evaluateReport(finishedTask, containerId);
+
+			/* log */ for (JsonReportEntry entry : finishedTask.getReport()) am.writeEntryToLog(entry);
+			/* log */ long runtime = System.currentTimeMillis() - invocation.timestamp;
+			/* log */ JSONObject obj = new JSONObject();
+			/* log */ try { obj.put(JsonReportEntry.LABEL_REALTIME, Long.toString(runtime)); } catch (JSONException e) { e.printStackTrace(System.out); }
+			/* log */ am.writeEntryToLog(new JsonReportEntry(System.currentTimeMillis(), finishedTask.getWorkflowId(), finishedTask.getTaskId(), finishedTask.getTaskName(), finishedTask.getLanguageLabel(), finishedTask.getId(), null, JsonReportEntry.KEY_INVOC_TIME, obj));
+
+			Collection<ContainerId> toBeReleasedContainers = am.getScheduler().taskCompleted(finishedTask, containerStatus, runtime);
+			for (ContainerId toBeReleasedContainer : toBeReleasedContainers) {
+                /* log */ WorkflowDriver.writeToStdout(String.format("Killing speculative copy of task %s on container %s", finishedTask, toBeReleasedContainer));
+                am.getAmRMClient().releaseAssignedContainer(toBeReleasedContainer);
+                am.getNumKilledContainers().incrementAndGet();
+            }
+
+			// signal task success to the application master
+			am.taskSuccess(finishedTask, containerId);
+
+			am.getNumCompletedContainers().incrementAndGet();
+		}
+        // container returned non-zero exit code
+        else {
+
+            am.taskFailure(finishedTask, containerId);
+            am.getNumFailedContainers().incrementAndGet();
+
+            if (exitStatus == ExitCode.TERMINATED.getExitCode()) {
+                /* log */ WorkflowDriver.writeToStdout(String.format("Container was terminated. containerID=%s, state=%s, exitStatus=%d, diagnostics=%s", containerStatus.getContainerId(), containerStatus.getState(), containerStatus.getExitStatus(), containerStatus.getDiagnostics()));
+            } else {
+                /* log */ WorkflowDriver.writeToStdout(String.format("Container completed with failure. containerID=%s, state=%s, exitStatus=%d, diagnostics=%s", containerStatus.getContainerId(), containerStatus.getState(), containerStatus.getExitStatus(), containerStatus.getDiagnostics()));
+                Collection<ContainerId> toBeReleasedContainers = am.getScheduler().taskFailed(finishedTask, containerStatus);
+                for (ContainerId toBeReleasedContainer : toBeReleasedContainers) {
+                    /* log */ WorkflowDriver.writeToStdout(String.format("Killing speculative copy of task %s on container %s", finishedTask, toBeReleasedContainer));
+                    am.getAmRMClient().releaseAssignedContainer(toBeReleasedContainer);
+                    am.getNumKilledContainers().incrementAndGet();
+                }
+            }
+        }
 	}
 
 	@Override
@@ -287,24 +257,70 @@ class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 		} catch (JSONException e) {
 			onError(e);
 		}
-		am.writeEntryToLog(new JsonReportEntry(am.getRunId(), null, null, null, null, null, HiwayDBI.KEY_HIWAY_EVENT, value));
+		// at this point, the container has not yet been offered to the scheduler, so there's no invocation mapped to this container yet.
+//		TaskInstance task = containerIdToInvocation.get(container.getId()).task;
+		am.writeEntryToLog(new JsonReportEntry(System.currentTimeMillis(), am.getRunId(), null, null, null, null, null, HiwayDBI.KEY_HIWAY_EVENT, value));
 	}
 
 	/**
 	 * Write a JSON log entry informing about completed containers.
 	 * @param containerStatus the ContainerStatus of as reported back to the {@link #onContainersCompleted(List)} callback.
 	 */
-	private void logHiwayEventContainerCompleted(ContainerStatus containerStatus) {
-		JSONObject value = new JSONObject();
+	private void logHiwayEventContainerCompleted(ContainerStatus containerStatus, LaunchContainerRunnable runnable) {
+
+		JSONObject entry = new JSONObject();
+
+		TaskResourceConsumption taskResourceConsumption = runnable.getMonitor().getTaskResourceConsumption();
+		long containerSizeBytes = runnable.getContainer().getResource().getMemory() * 1024L * 1024L;
+		long wastageByte = containerSizeBytes - taskResourceConsumption.getMemoryByteMax();
+		double wastagePercent = 1. * wastageByte / containerSizeBytes;
 		try {
-			value.put("type", "container-completed");
-			value.put("container-id", containerStatus.getContainerId());
-			value.put("state", containerStatus.getState());
-			value.put("exit-code", containerStatus.getExitStatus());
-			value.put("diagnostics", containerStatus.getDiagnostics());
+			entry.put("type", "container-completed");
+			entry.put("container-id", containerStatus.getContainerId());
+			entry.put("state", containerStatus.getState());
+			entry.put("exit-code", containerStatus.getExitStatus());
+			entry.put("diagnostics", containerStatus.getDiagnostics());
+			JSONObject resourceConsumption = new JSONObject();
+			resourceConsumption.put("memoryByteMax", Long.toString(taskResourceConsumption.getMemoryByteMax()));
+			resourceConsumption.put("memoryByteFifty", Long.toString(taskResourceConsumption.getMemoryByteFifty()));
+			resourceConsumption.put("memoryByteNinety", Long.toString(taskResourceConsumption.getMemoryByteNinety()));
+			resourceConsumption.put("memoryByteNinetyFive", Long.toString(taskResourceConsumption.getMemoryByteNinetyFive()));
+			resourceConsumption.put("memoryWastageByte", Long.toString(wastageByte));
+			// this is redundant, maybe remove (wastagePercent = memoryWastageByte/(memoryWastageByte+memoryByteMax))
+			resourceConsumption.put("memoryWastagePercent", Double.toString(wastagePercent));
+			entry.put("resource-consumption", resourceConsumption);
+		} catch (JSONException e) {
+			// Called when error comes from RM communications as well as from errors in the callback itself from the app. Calling stop() is the recommended action.
+			onError(e);
+		}
+
+		TaskInstance finishedTask = containerIdToInvocation.get(containerStatus.getContainerId()).task;
+		am.writeEntryToLog(new JsonReportEntry(System.currentTimeMillis(), finishedTask.getWorkflowId(), finishedTask.getTaskId(), finishedTask.getTaskName(), finishedTask.getLanguageLabel(), finishedTask.getId(), null, HiwayDBI.KEY_HIWAY_EVENT, entry));
+	}
+
+	private void addTaskRuntimeToTaskReport(Container allocatedContainer, long tic, TaskInstance task, long toc) {
+		JSONObject obj = new JSONObject();
+		try {
+			obj.put(JsonReportEntry.LABEL_REALTIME, Long.toString(toc - tic));
 		} catch (JSONException e) {
 			onError(e);
 		}
-		am.writeEntryToLog(new JsonReportEntry(am.getRunId(), null, null, null, null, null, HiwayDBI.KEY_HIWAY_EVENT, value));
+		task.getReport().add( new JsonReportEntry(
+				task.getWorkflowId(),
+				task.getTaskId(),
+				task.getTaskName(),
+				task.getLanguageLabel(),
+				task.getId(),
+				null,
+				HiwayDBI.KEY_INVOC_TIME_SCHED,
+				obj));
+		task.getReport().add( new JsonReportEntry(task.getWorkflowId(),
+				task.getTaskId(),
+				task.getTaskName(),
+				task.getLanguageLabel(),
+				task.getId(),
+				null,
+				HiwayDBI.KEY_INVOC_HOST,
+				allocatedContainer.getNodeId().getHost()));
 	}
 }

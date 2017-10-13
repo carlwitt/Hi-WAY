@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Vector;
 
+import de.huberlin.wbi.hiway.monitoring.CAdvisorMonitor;
 import org.apache.hadoop.yarn.api.ContainerManagementProtocol;
 import org.apache.hadoop.yarn.api.ApplicationConstants.Environment;
 import org.apache.hadoop.yarn.api.records.Container;
@@ -36,13 +37,16 @@ class LaunchContainerRunnable implements Runnable {
 
 	/** The Application Master */
 	private final WorkflowDriver am;
+
 	/** Allocated container */
 	private final Container container;
+
 	/** Callback handler of the container */
 	private final NMCallbackHandler containerListener;
 	/** The task to be launched */
 	private final TaskInstance task;
-
+	/** Used for retrieving resource usage statistics over HTTP (cadvisor's REST API). */
+	private CAdvisorMonitor resourceUsagePolling;
 	/**
 	 * @param lcontainer Allocated container
 	 * @param containerListener Callback handler of the container
@@ -173,6 +177,23 @@ class LaunchContainerRunnable implements Runnable {
 		ctx.setTokens(am.getAllTokens().duplicate());
 
 		containerListener.addContainer(container.getId(), container);
+
+		// start container
 		am.getNmClientAsync().startContainerAsync(container, ctx);
+
+		// start monitoring the container
+		String hostName = container.getNodeHttpAddress().split(":")[0];
+		String cadvisorPort = am.getConf().get(HiWayConfiguration.HIWAY_MONITORING_CADVISOR_PORT);
+		resourceUsagePolling = new CAdvisorMonitor(hostName  + ":" + cadvisorPort,task.getDockerContainerName());
+		resourceUsagePolling.startMonitoring();
+	}
+	/** @return the object used to monitor the resource usage of the container. */
+	public CAdvisorMonitor getMonitor(){
+		return resourceUsagePolling;
+	}
+
+
+	public Container getContainer() {
+		return container;
 	}
 }
