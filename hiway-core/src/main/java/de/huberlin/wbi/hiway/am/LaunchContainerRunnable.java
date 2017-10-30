@@ -58,6 +58,11 @@ class LaunchContainerRunnable implements Runnable {
 		this.containerListener = containerListener;
 		this.task = task;
 		this.am = am;
+
+		String hostName = lcontainer.getNodeHttpAddress().split(":")[0];
+		String cadvisorPort = am.getConf().get(HiWayConfiguration.HIWAY_MONITORING_CADVISOR_PORT);
+		this.resourceUsagePolling = new CAdvisorMonitor(hostName  + ":" + cadvisorPort, task.getDockerContainerName());
+
 	}
 
 	/**
@@ -181,10 +186,7 @@ class LaunchContainerRunnable implements Runnable {
 		// start container
 		am.getNmClientAsync().startContainerAsync(container, ctx);
 
-		// start monitoring the container
-		String hostName = container.getNodeHttpAddress().split(":")[0];
-		String cadvisorPort = am.getConf().get(HiWayConfiguration.HIWAY_MONITORING_CADVISOR_PORT);
-		resourceUsagePolling = new CAdvisorMonitor(hostName  + ":" + cadvisorPort,task.getDockerContainerName());
+		// start monitoring the resource usage of the container
 		resourceUsagePolling.startMonitoring();
 	}
 	/** @return the object used to monitor the resource usage of the container. */

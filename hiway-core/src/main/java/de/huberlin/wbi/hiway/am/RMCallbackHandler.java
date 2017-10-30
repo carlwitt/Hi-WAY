@@ -42,7 +42,7 @@ class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 	/** a queue for allocated containers that have yet to be assigned a task **/
 	private final Queue<Container> containerQueue = new LinkedList<>();
 
-	public RMCallbackHandler(WorkflowDriver am) {
+	RMCallbackHandler(WorkflowDriver am) {
 		super();
 		this.am = am;
 	}
@@ -149,7 +149,8 @@ class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 
 			// stop monitoring, evaluate results and log them out
 			LaunchContainerRunnable runnable = containerIdToRunnable.remove(containerId);
-			runnable.getMonitor().stopMonitoring();
+			//TODO find out why there were nullpointerexceptions
+			if (runnable!=null && runnable.getMonitor()!=null)runnable.getMonitor().stopMonitoring();
 			/* log */ logHiwayEventContainerCompleted(containerStatus, runnable);
 
 			// The container was released by the framework (e.g., it was a speculative copy of a finished task)
@@ -228,6 +229,7 @@ class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 
 	@Override
 	public void onError(Throwable e) {
+		WorkflowDriver.writeToStdErr(e.getMessage());
 		e.printStackTrace(System.out);
 		System.exit(-1);
 	}
@@ -270,8 +272,15 @@ class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 
 		JSONObject entry = new JSONObject();
 
-		TaskResourceConsumption taskResourceConsumption = runnable.getMonitor().getTaskResourceConsumption();
-		long containerSizeBytes = runnable.getContainer().getResource().getMemory() * 1024L * 1024L;
+		//TODO find out why there are nullpointerexceptions
+		TaskResourceConsumption taskResourceConsumption;
+		if(runnable == null || runnable.getMonitor() == null){
+			WorkflowDriver.writeToStdErr("runnable " + (runnable==null?"null":runnable) + "cadvisormonitor " + (runnable==null?"no runnable":"no monitor on runnable"));
+			taskResourceConsumption = new TaskResourceConsumption();
+		} else
+			taskResourceConsumption = runnable.getMonitor().getTaskResourceConsumption();
+
+		long containerSizeBytes = runnable != null ? runnable.getContainer().getResource().getMemory() * 1024L * 1024L : 0L;
 		long wastageByte = containerSizeBytes - taskResourceConsumption.getMemoryByteMax();
 		double wastagePercent = 1. * wastageByte / containerSizeBytes;
 		try {
@@ -294,8 +303,13 @@ class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 			onError(e);
 		}
 
-		TaskInstance finishedTask = containerIdToInvocation.get(containerStatus.getContainerId()).task;
-		am.writeEntryToLog(new JsonReportEntry(System.currentTimeMillis(), finishedTask.getWorkflowId(), finishedTask.getTaskId(), finishedTask.getTaskName(), finishedTask.getLanguageLabel(), finishedTask.getId(), null, HiwayDBI.KEY_HIWAY_EVENT, entry));
+		//TODO find out why nullptr exceptions occur
+		if (containerIdToInvocation.get(containerStatus.getContainerId()) == null)
+			WorkflowDriver.writeToStdErr("No invocation for "+containerStatus.getContainerId());
+		else{
+			TaskInstance finishedTask = containerIdToInvocation.get(containerStatus.getContainerId()).task;
+			am.writeEntryToLog(new JsonReportEntry(System.currentTimeMillis(), finishedTask.getWorkflowId(), finishedTask.getTaskId(), finishedTask.getTaskName(), finishedTask.getLanguageLabel(), finishedTask.getId(), null, HiwayDBI.KEY_HIWAY_EVENT, entry));
+		}
 	}
 
 	private void addTaskRuntimeToTaskReport(Container allocatedContainer, long tic, TaskInstance task, long toc) {

@@ -12,7 +12,7 @@ import de.huberlin.wbi.hiway.common.Worker;
 public class CuneiformEWorker extends Worker {
 
 	public static void main(String[] args) {
-		Worker.loop(new CuneiformEWorker(), args);
+		Worker.run(new CuneiformEWorker(), args);
 	}
 
 	@Override

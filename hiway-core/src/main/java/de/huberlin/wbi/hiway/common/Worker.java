@@ -1,4 +1,5 @@
-/*******************************************************************************
+/*
+ *******************************************************************************
  * In the Hi-WAY project we propose a novel approach of executing scientific
  * workflows processing Big Data, as found in NGS applications, on distributed
  * computational infrastructures. The Hi-WAY software stack comprises the func-
@@ -57,70 +58,133 @@ import de.huberlin.wbi.cuneiform.core.semanticmodel.JsonReportEntry;
 
 public class Worker {
 
-	public static void loop(Worker worker, String[] args) {
-		int exitValue;
-		worker.init(args);
-		exitValue = worker.run();
-		System.exit(exitValue);
-	}
-
-	public static void main(String[] args) {
-		Worker.loop(new Worker(), args);
-	}
-
-	private static void writeEntryToLog(JsonReportEntry entry) throws IOException {
-		try (BufferedWriter writer = new BufferedWriter(new FileWriter(new File(Invocation.REPORT_FILENAME), true))) {
-			writer.write(entry.toString() + "\n");
-		}
-	}
-
-	private String appId;
-	private HiWayConfiguration conf;
 	protected String containerId;
 	private boolean determineFileSizes = false;
 	private FileSystem hdfs;
 	protected long id;
-	private final Set<Data> inputFiles;
+	private final Set<Data> inputFiles = new HashSet<>();
 	private String invocScript = "";
 	private String langLabel;
-	protected final Set<Data> outputFiles;
+	protected final Set<Data> outputFiles = new HashSet<>();
 	private long taskId;
 	private String taskName;
 	private UUID workflowId;
 
-	protected Worker() {
-		inputFiles = new HashSet<>();
-		outputFiles = new HashSet<>();
-	}
+	protected Worker() { }
 
-	private int exec() {
-		File script = new File("./" + id);
+	/**
+	 * Initializes the worker, stages input files in, executes the process carrying out this task's work,
+	 * and stages the output files and reports out.
+	 * @param worker An instance of this class, e.g., {@link de.huberlin.wbi.hiway.am.cuneiforme.CuneiformEWorker}
+	 * @param args Command line parameters (to the worker Java process? Set by the application master?)
+	 */
+	public static void run(Worker worker, String[] args) {
+
+		// parse command line arguments, get input and output file names
+		worker.init(args);
+
+		// stage in: get input files from distributed file system
+		long tic = System.currentTimeMillis();
+		worker.stageIn();
+		long toc = System.currentTimeMillis();
+		/* log */
+		worker.logDuration(HiwayDBI.KEY_FILE_TIME_STAGEIN, toc-tic, null);
+
+		// execute the worker's task
+		int exitValue = -1;
+		File script = new File("./" + worker.id);
 		script.setExecutable(true);
 		ProcessBuilder processBuilder = new ProcessBuilder(script.getPath());
 		processBuilder.directory(new File("."));
 		processBuilder.environment().remove("MALLOC_ARENA_MAX");
 		Process process;
-		int exitValue = -1;
+//		tic = System.currentTimeMillis();
 		try {
 			processBuilder.inheritIO();
 			process = processBuilder.start();
 			exitValue = process.waitFor();
-		} catch (IOException | InterruptedException e) {
+		} catch (IOException | InterruptedException e1) {
+			e1.printStackTrace(System.out);
+		}
+//		toc = System.currentTimeMillis();
+		// redundant/conflicting with the application master, which logs invoc-time as the difference between container completed and container started events? {@link RMCallbackHandler#finalizeRequestedContainer}
+		/* log logDuration(JsonReportEntry.KEY_INVOC_TIME, toc-tic);*/
+
+		// read and log the invocation script
+		/* log */ worker.logInvocationScript();
+
+		// stage out output files and stdout and stderr files, measure time
+		Data stdOutData = new Data(worker.id + "_" + Invocation.STDOUT_FILENAME, worker.containerId);
+		Data stdErrData = new Data(worker.id + "_" + Invocation.STDERR_FILENAME, worker.containerId);
+		tic = System.currentTimeMillis();
+		try {
+			worker.stageOut();
+			stdOutData.stageOut();
+			stdErrData.stageOut();
+		} catch (IOException e) {
+			e.printStackTrace(System.out);
+		}
+		toc = System.currentTimeMillis();
+		/* log */
+		worker.logDuration(HiwayDBI.KEY_INVOC_TIME_STAGEOUT, toc-tic, null);
+
+		// stage out the report file
+		(new File(Invocation.REPORT_FILENAME)).renameTo(new File(worker.id + "_" + Invocation.REPORT_FILENAME));
+		try {
+			new Data(worker.id + "_" + Invocation.REPORT_FILENAME, worker.containerId).stageOut();
+		} catch (IOException e) {
 			e.printStackTrace(System.out);
 		}
 
-		return exitValue;
+		System.exit(exitValue);
 	}
 
+	/**
+	 * Read command line parameters, input and output file names, and create files for stdout and stderr.
+	 * @param args Command line parameters.
+	 */
 	private void init(String[] args) {
 
-		conf = new HiWayConfiguration();
+		HiWayConfiguration conf = new HiWayConfiguration();
 		try {
 			hdfs = FileSystem.get(conf);
 		} catch (IOException e) {
 			e.printStackTrace(System.out);
 		}
 
+		// extract application id, container id, workflow id, task name, invoc script, etc. from command line parameters
+		parseCommandLineParameters(args, conf);
+
+		// read input and output file names
+		try (BufferedReader reader = new BufferedReader(new FileReader(id + "_data"))) {
+			int n = Integer.parseInt(reader.readLine());
+			for (int i = 0; i < n; i++) {
+				String[] inputElements = reader.readLine().split(",");
+				String otherContainerId = inputElements.length > 1 ? inputElements[1] : null;
+				Data input = new Data(inputElements[0], otherContainerId);
+				inputFiles.add(input);
+			}
+			n = Integer.parseInt(reader.readLine());
+			for (int i = 0; i < n; i++) {
+				outputFiles.add(new Data(reader.readLine(), containerId));
+			}
+		} catch (IOException e) {
+			e.printStackTrace(System.out);
+		}
+
+		// create files for standard output and standard error streams
+		try {
+			File stdout = new File(id + "_" + Invocation.STDOUT_FILENAME);
+			if (!stdout.exists()) stdout.createNewFile();
+			File stderr = new File(id + "_" + Invocation.STDOUT_FILENAME);
+			if (!stderr.exists()) stderr.createNewFile();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+
+	/** extract application id, container id, workflow id, task name, invoc script, etc. from command line parameters */
+	private void parseCommandLineParameters(String[] args, HiWayConfiguration conf) {
 		Options opts = new Options();
 		opts.addOption("appId", true, "Id of this Container's Application Master.");
 		opts.addOption("containerId", true, "Id of this Container.");
@@ -136,7 +200,7 @@ public class Worker {
 		try {
 			cliParser = new GnuParser().parse(opts, args);
 			containerId = cliParser.getOptionValue("containerId");
-			appId = cliParser.getOptionValue("appId");
+			String appId = cliParser.getOptionValue("appId");
 			String hdfsBaseDirectoryName = conf.get(HiWayConfiguration.HIWAY_AM_DIRECTORY_BASE, HiWayConfiguration.HIWAY_AM_DIRECTORY_BASE_DEFAULT);
 			String hdfsSandboxDirectoryName = conf.get(HiWayConfiguration.HIWAY_AM_DIRECTORY_CACHE, HiWayConfiguration.HIWAY_AM_DIRECTORY_CACHE_DEFAULT);
 			Path hdfsBaseDirectory = new Path(new Path(hdfs.getUri()), hdfsBaseDirectoryName);
@@ -160,100 +224,6 @@ public class Worker {
 		} catch (ParseException e) {
 			e.printStackTrace(System.out);
 		}
-
-		try (BufferedReader reader = new BufferedReader(new FileReader(id + "_data"))) {
-			int n = Integer.parseInt(reader.readLine());
-			for (int i = 0; i < n; i++) {
-				String[] inputElements = reader.readLine().split(",");
-				String otherContainerId = inputElements.length > 1 ? inputElements[1] : null;
-				Data input = new Data(inputElements[0], otherContainerId);
-				inputFiles.add(input);
-			}
-			n = Integer.parseInt(reader.readLine());
-			for (int i = 0; i < n; i++) {
-				outputFiles.add(new Data(reader.readLine(), containerId));
-			}
-			File stdout = new File(id + "_" + Invocation.STDOUT_FILENAME);
-			if (!stdout.exists()) {
-				stdout.createNewFile();
-			}
-			File stderr = new File(id + "_" + Invocation.STDOUT_FILENAME);
-			if (!stderr.exists()) {
-				stderr.createNewFile();
-			}
-		} catch (IOException e) {
-			e.printStackTrace(System.out);
-		}
-	}
-
-	/**
-	 *
-	 * @return
-	 */
-	private int run() {
-		/* metrics */ long tic = System.currentTimeMillis();
-		stageIn();
-		/* metrics */ long toc = System.currentTimeMillis();
-		/* log */ try {
-			writeEntryToLog(new JsonReportEntry(tic, workflowId, taskId, taskName, langLabel, id, null, HiwayDBI.KEY_INVOC_TIME_STAGEIN,
-				new JSONObject().put(JsonReportEntry.LABEL_REALTIME, Long.toString(toc - tic))));
-		} catch (JSONException | IOException e) { e.printStackTrace(System.out); }
-
-		// tic = System.currentTimeMillis();
-		int exitValue = exec();
-		// toc = System.currentTimeMillis();
-
-		if (invocScript.length() > 0) {
-			try (BufferedReader reader = new BufferedReader(new FileReader(invocScript))) {
-				String line;
-				StringBuilder sb = new StringBuilder();
-				while ((line = reader.readLine()) != null) {
-					sb.append(line).append("\n");
-				}
-				writeEntryToLog(new JsonReportEntry(workflowId, taskId, taskName, langLabel, id, JsonReportEntry.KEY_INVOC_SCRIPT, sb.toString()));
-			} catch (IOException e) {
-				e.printStackTrace(System.out);
-			}
-		}
-
-		// obj = new JSONObject();
-		// obj.put(JsonReportEntry.LABEL_REALTIME, Long.toString(toc - tic));
-		// writeEntryToLog(new JsonReportEntry(tic, workflowId, taskId, taskName, langLabel, id, null, JsonReportEntry.KEY_INVOC_TIME, obj));
-
-		tic = System.currentTimeMillis();
-		try {
-			new Data(id + "_" + Invocation.STDOUT_FILENAME, containerId).stageOut();
-		} catch (IOException e) {
-			e.printStackTrace(System.out);
-		}
-		try {
-			new Data(id + "_" + Invocation.STDERR_FILENAME, containerId).stageOut();
-		} catch (IOException e) {
-			e.printStackTrace(System.out);
-		}
-
-		stageOut();
-		toc = System.currentTimeMillis();
-		JSONObject obj = new JSONObject();
-		try {
-			obj.put(JsonReportEntry.LABEL_REALTIME, Long.toString(toc - tic));
-		} catch (JSONException e) {
-			e.printStackTrace(System.out);
-		}
-		try {
-			writeEntryToLog(new JsonReportEntry(tic, workflowId, taskId, taskName, langLabel, id, null, HiwayDBI.KEY_INVOC_TIME_STAGEOUT, obj));
-		} catch (IOException e) {
-			e.printStackTrace(System.out);
-		}
-
-		(new File(Invocation.REPORT_FILENAME)).renameTo(new File(id + "_" + Invocation.REPORT_FILENAME));
-		try {
-			new Data(id + "_" + Invocation.REPORT_FILENAME, containerId).stageOut();
-		} catch (IOException e) {
-			e.printStackTrace(System.out);
-		}
-
-		return exitValue;
 	}
 
 	private void stageIn() {
@@ -265,31 +235,16 @@ public class Worker {
 				e.printStackTrace(System.out);
 			}
 			long toc = System.currentTimeMillis();
-			JSONObject obj = new JSONObject();
-			try {
-				obj.put(JsonReportEntry.LABEL_REALTIME, Long.toString(toc - tic));
-			} catch (JSONException e) {
-				e.printStackTrace(System.out);
-			}
-			try {
-				writeEntryToLog(new JsonReportEntry(tic, workflowId, taskId, taskName, langLabel, id, input.getLocalPath().toString(),
-						HiwayDBI.KEY_FILE_TIME_STAGEIN, obj));
-			} catch (IOException e) {
-				e.printStackTrace(System.out);
-			}
+			/* log */ logDuration(HiwayDBI.KEY_FILE_TIME_STAGEIN, toc-tic, input.getLocalPath().toString());
 			if (determineFileSizes) {
-				try {
-					writeEntryToLog(new JsonReportEntry(tic, workflowId, taskId, taskName, langLabel, id, input.getLocalPath().toString(),
-							JsonReportEntry.KEY_FILE_SIZE_STAGEIN, Long.toString((new File(input.getLocalPath().toString())).length())));
-				} catch (IOException e) {
-					e.printStackTrace(System.out);
-				}
+				writeEntryToLogSilent(new JsonReportEntry(tic, workflowId, taskId, taskName, langLabel, id, input.getLocalPath().toString(), JsonReportEntry.KEY_FILE_SIZE_STAGEIN, Long.toString((new File(input.getLocalPath().toString())).length())));
 			}
 
 		}
 	}
 
 	public void stageOut() {
+		// determine output files from task report
 		try (BufferedReader logReader = new BufferedReader(new FileReader(new File(Invocation.REPORT_FILENAME)))) {
 			String line;
 			while ((line = logReader.readLine()) != null) {
@@ -301,6 +256,7 @@ public class Worker {
 		} catch (IOException | JSONException e) {
 			e.printStackTrace(System.out);
 		}
+		// stage output files out
 		for (Data output : outputFiles) {
 			long tic = System.currentTimeMillis();
 			try {
@@ -309,27 +265,53 @@ public class Worker {
 				e.printStackTrace(System.out);
 			}
 			long toc = System.currentTimeMillis();
-			JSONObject obj = new JSONObject();
-			try {
-				obj.put(JsonReportEntry.LABEL_REALTIME, Long.toString(toc - tic));
-			} catch (JSONException e) {
-				e.printStackTrace(System.out);
-			}
-			try {
-				writeEntryToLog(new JsonReportEntry(tic, workflowId, taskId, taskName, langLabel, id, output.getLocalPath().toString(),
-						HiwayDBI.KEY_FILE_TIME_STAGEOUT, obj));
+			/* log */ logDuration(HiwayDBI.KEY_FILE_TIME_STAGEOUT, toc-tic, output.getLocalPath().toString());
+			/* log */ if (determineFileSizes) writeEntryToLogSilent(new JsonReportEntry(tic, workflowId, taskId, taskName, langLabel, id, output.getLocalPath().toString(), JsonReportEntry.KEY_FILE_SIZE_STAGEOUT, Long.toString((new File(output.getLocalPath().toString())).length())));
+		}
+	}
+
+	private void logDuration(String label, long milliSeconds, String file) {
+		JSONObject obj = new JSONObject();
+		try {
+			obj.put(JsonReportEntry.LABEL_REALTIME, Long.toString(milliSeconds));
+		} catch (JSONException e) {
+			e.printStackTrace(System.out);
+		}
+		writeEntryToLogSilent(new JsonReportEntry(System.currentTimeMillis(), workflowId, taskId, taskName, langLabel, id, file, label, obj));
+	}
+
+	private void logInvocationScript() {
+		if (invocScript.length() > 0) {
+			try (BufferedReader reader = new BufferedReader(new FileReader(invocScript))) {
+				String line;
+				StringBuilder sb = new StringBuilder();
+				while ((line = reader.readLine()) != null) {
+					sb.append(line).append("\n");
+				}
+				writeEntryToLogSilent(new JsonReportEntry(workflowId, taskId, taskName, langLabel, id, JsonReportEntry.KEY_INVOC_SCRIPT, sb.toString()));
 			} catch (IOException e) {
 				e.printStackTrace(System.out);
-			}
-			if (determineFileSizes) {
-				try {
-					writeEntryToLog(new JsonReportEntry(tic, workflowId, taskId, taskName, langLabel, id, output.getLocalPath().toString(),
-							JsonReportEntry.KEY_FILE_SIZE_STAGEOUT, Long.toString((new File(output.getLocalPath().toString())).length())));
-				} catch (IOException e) {
-					e.printStackTrace(System.out);
-				}
 			}
 		}
 	}
 
+	/** Write a message to the task's log. */
+	private static void writeEntryToLog(JsonReportEntry entry) throws IOException {
+		try (BufferedWriter writer = new BufferedWriter(new FileWriter(new File(Invocation.REPORT_FILENAME), true))) {
+			writer.write(entry.toString() + "\n");
+		}
+	}
+
+	/** Write a message to the task's log. Catch and print errors to System.out. */
+	private static void writeEntryToLogSilent(JsonReportEntry entry) {
+		try {
+			writeEntryToLog(entry);
+		} catch (IOException e) {
+			e.printStackTrace(System.out);
+		}
+	}
+
+	public static void main(String[] args) {
+		Worker.run(new Worker(), args);
+	}
 }

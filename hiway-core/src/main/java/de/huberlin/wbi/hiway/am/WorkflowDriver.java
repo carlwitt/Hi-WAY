@@ -220,7 +220,7 @@ public abstract class WorkflowDriver {
 	}
 
 
-	/** Does work in a while loop as long as not interrupted. Sleeps in between iterations to throttle. */
+	/** Does work in a while run as long as not interrupted. Sleeps in between iterations to throttle. */
 	@SuppressWarnings("unchecked")
 	protected void loop() {
 		try {

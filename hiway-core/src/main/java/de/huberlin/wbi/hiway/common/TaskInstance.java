@@ -71,27 +71,36 @@ public class TaskInstance implements Comparable<TaskInstance> {
 	private final Set<Data> inputData;
 	/** output data */
 	private final Set<Data> outputData;
-	/** the upward rank of tasks in the workflow */
-	private double upwardRank = 0d;
-	private int depth = 0;
-
-	// OS and worker related
-	/** The commands to be executed by the task.
-	 * This can be a multiline string, since the contents are written to a bash script which is then executed within the YARN container. */
-	private String command;
-	private String invocScript = "";
 	/** the name and (internal) id of the task's executable (e.g. tar) */
 	private final String taskName;
 	/** The task report contains a summary of stage in and stage out times. */
 	private final Set<JsonReportEntry> report;
+
+	// OS and worker related
 	/** the programming language of this task (default: bash) */
 	private final String languageLabel;
+	// TODO it would be nice to externalize the upwardRank and depth to another class since it doesn't apply to all task instances (either wrapper, or inheritance)
+	/** the upward rank of tasks in the workflow */
+	private double upwardRank = 0d;
+	private int depth = 0;
+	/** The commands to be executed by the task.
+	 * This can be a multiline string, since the contents are written to a bash script which is then executed within the YARN container. */
+	private String command;
+	private String invocScript = "";
 
 	// Execution logic
 	/** whether this task is completed yet */
 	private boolean completed;
 	/** the number of times this task has been attempted */
 	private int tries = 0;
+
+	protected TaskInstance(UUID workflowId, String taskName, long taskId) {
+		this(workflowId, taskName, taskId, ForeignLambdaExpr.LANGID_BASH);
+	}
+
+	private TaskInstance(UUID workflowId, String taskName, long taskId, String languageLabel) {
+		this(runningId++, workflowId, taskName, taskId, languageLabel);
+	}
 
 	public TaskInstance(long id, UUID workflowId, String taskName, long taskId, String languageLabel) {
 		this.id = id;
@@ -106,31 +115,6 @@ public class TaskInstance implements Comparable<TaskInstance> {
 		this.report = new HashSet<>();
 		this.parentTasks = new HashSet<>();
 		this.childTasks = new HashSet<>();
-	}
-
-	protected TaskInstance(UUID workflowId, String taskName, long taskId) {
-		this(workflowId, taskName, taskId, ForeignLambdaExpr.LANGID_BASH);
-	}
-
-	private TaskInstance(UUID workflowId, String taskName, long taskId, String languageLabel) {
-		this(runningId++, workflowId, taskName, taskId, languageLabel);
-	}
-
-	public void addChildTask(TaskInstance childTask) {
-		childTasks.add(childTask);
-	}
-
-	public void addInputData(Data data) {
-		inputData.add(data);
-	}
-
-	public void addOutputData(Data data) {
-		outputData.add(data);
-	}
-
-	public void addParentTask(TaskInstance parentTask) {
-		parentTasks.add(parentTask);
-		this.setDepth(parentTask.getDepth() + 1);
 	}
 
 	/** Writes the script file containing the task's {@link #command},
@@ -168,9 +152,33 @@ public class TaskInstance implements Comparable<TaskInstance> {
 		return localResources;
 	}
 
-	@Override
-	public int compareTo(TaskInstance other) {
-		return Long.compare(this.getId(), other.getId());
+	public String getCommand() {
+		return command;
+	}
+
+	public void setCommand(String command) {
+		this.command = command;
+	}
+
+	public long getId() {
+		return id;
+	}
+
+	public void addChildTask(TaskInstance childTask) {
+		childTasks.add(childTask);
+	}
+
+	public void addInputData(Data data) {
+		inputData.add(data);
+	}
+
+	public void addOutputData(Data data) {
+		outputData.add(data);
+	}
+
+	public void addParentTask(TaskInstance parentTask) {
+		parentTasks.add(parentTask);
+		this.setDepth(parentTask.getDepth() + 1);
 	}
 
 	public long countAvailableLocalData(Container container) throws IOException {
@@ -179,6 +187,10 @@ public class TaskInstance implements Comparable<TaskInstance> {
 			sum += input.countAvailableLocalData(container);
 		}
 		return sum;
+	}
+
+	public Set<Data> getInputData() {
+		return inputData;
 	}
 
 	public long countAvailableTotalData() throws IOException {
@@ -193,88 +205,8 @@ public class TaskInstance implements Comparable<TaskInstance> {
 		return childTasks;
 	}
 
-	public String getCommand() {
-		return command;
-	}
-
 	public int getDepth() throws WorkflowStructureUnknownException {
 		return depth;
-	}
-
-	public long getId() {
-		return id;
-	}
-
-	public Set<Data> getInputData() {
-		return inputData;
-	}
-
-	public String getInvocScript() {
-		return invocScript;
-	}
-
-	public String getLanguageLabel() {
-		return languageLabel;
-	}
-
-	public Set<Data> getOutputData() {
-		return outputData;
-	}
-
-	public Set<TaskInstance> getParentTasks() throws WorkflowStructureUnknownException {
-		return parentTasks;
-	}
-
-	public Set<JsonReportEntry> getReport() {
-		return report;
-	}
-
-	public long getTaskId() {
-		return taskId;
-	}
-
-	public String getTaskName() {
-		return taskName;
-	}
-
-	public int getTries() {
-		return tries;
-	}
-
-	public double getUpwardRank() throws WorkflowStructureUnknownException {
-		return upwardRank;
-	}
-
-	public UUID getWorkflowId() {
-		return workflowId;
-	}
-
-	public void incTries() {
-		tries++;
-	}
-
-	public boolean isCompleted() {
-		return completed;
-	}
-
-	public boolean readyToExecute() {
-		for (TaskInstance parentTask : parentTasks) {
-			if (!parentTask.isCompleted())
-				return false;
-		}
-		return true;
-	}
-
-	public boolean retry(int maxRetries) {
-		return tries <= maxRetries;
-	}
-
-	public void setCommand(String command) {
-		this.command = command;
-	}
-
-	public void setCompleted() {
-		completed = true;
 	}
 
 	protected void setDepth(int depth) throws WorkflowStructureUnknownException {
@@ -286,12 +218,36 @@ public class TaskInstance implements Comparable<TaskInstance> {
 		}
 	}
 
-	protected void setInvocScript(String invocScript) {
-		this.invocScript = invocScript;
+	public boolean readyToExecute() {
+		for (TaskInstance parentTask : parentTasks) {
+			if (!parentTask.isCompleted())
+				return false;
+		}
+		return true;
 	}
 
-	public void setUpwardRank(double upwardRank) throws WorkflowStructureUnknownException {
-		this.upwardRank = upwardRank;
+	public boolean isCompleted() {
+		return completed;
+	}
+
+	public long getTaskId() {
+		return taskId;
+	}
+
+	public String getTaskName() {
+		return taskName;
+	}
+
+	public void incTries() {
+		tries++;
+	}
+
+	public int getTries() {
+		return tries;
+	}
+
+	public boolean retry(int maxRetries) {
+		return tries <= maxRetries;
 	}
 
 	/** This is the name given to the container running the task.
@@ -301,38 +257,49 @@ public class TaskInstance implements Comparable<TaskInstance> {
 		return String.format("%s_%s", getWorkflowId(), getId());
 	}
 
+	public UUID getWorkflowId() {
+		return workflowId;
+	}
+
+	public double getUpwardRank() throws WorkflowStructureUnknownException {
+		return upwardRank;
+	}
+
+	public void setUpwardRank(double upwardRank) throws WorkflowStructureUnknownException {
+		this.upwardRank = upwardRank;
+	}
+
+	public String getInvocScript() {
+		return invocScript;
+	}
+
+	protected void setInvocScript(String invocScript) {
+		this.invocScript = invocScript;
+	}
+
+	public String getLanguageLabel() {
+		return languageLabel;
+	}
+
+	public Set<Data> getOutputData() {
+		return outputData;
+	}
+
+	public void setCompleted() {
+		completed = true;
+	}
+
+	public Set<JsonReportEntry> getReport() {
+		return report;
+	}
+
 	@Override
 	public String toString() {
 		return id + " [" + taskName + "]";
 	}
 
-	private static class Comparators {
-
-		public static Comparator<TaskInstance> DEPTH = new Comparator<TaskInstance>() {
-			@Override
-			public int compare(TaskInstance task1, TaskInstance task2) {
-				try {
-					return Integer.compare(task1.getDepth(), task2.getDepth());
-				} catch (WorkflowStructureUnknownException e) {
-					e.printStackTrace(System.out);
-					System.exit(1);
-					throw new RuntimeException(e);
-				}
-			}
-		};
-
-		public static Comparator<TaskInstance> UPWARDSRANK = new Comparator<TaskInstance>() {
-			@Override
-			public int compare(TaskInstance task1, TaskInstance task2) {
-				try {
-					return -Double.compare(task1.getUpwardRank(), task2.getUpwardRank());
-				} catch (WorkflowStructureUnknownException e) {
-					e.printStackTrace(System.out);
-					System.exit(1);
-					throw new RuntimeException(e);
-				}
-			}
-		};
-
+	@Override
+	public int compareTo(TaskInstance other) {
+		return Long.compare(this.getId(), other.getId());
 	}
 }

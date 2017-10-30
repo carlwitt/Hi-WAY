@@ -64,9 +64,9 @@ public class CAdvisorMonitor implements Runnable {
     private TaskResourceConsumption taskResourceConsumption = new TaskResourceConsumption();
 
     /** The URL to the cAdvisor endpoint */
-    URL url;
+    private URL url;
 
-    /** The thread used to run and interrupt the polling loop. */
+    /** The thread used to run and interrupt the polling run. */
     private Thread thread;
     /** The time between consecutive metric fetches. */
     private long pollingDelay = 1000;
@@ -75,9 +75,6 @@ public class CAdvisorMonitor implements Runnable {
     private boolean writeToFile;
     /** The file to write observations (in JSON format) to. Only relevant if {@link #writeToFile} is true. */
     private File metricsFile;
-
-    /** Just for logging */
-    private String dockerContainerNameShort;
 
     public CAdvisorMonitor(String cAdvisorHostAndPort, String dockerContainerName) {
         this(cAdvisorHostAndPort, dockerContainerName, null);
@@ -101,7 +98,6 @@ public class CAdvisorMonitor implements Runnable {
             e.printStackTrace();
         }
 
-        dockerContainerNameShort = dockerContainerName.substring(0, 8);
     }
 
     /** REST command to get aggregated (percentiles) resource usage statistics of a container. e.g., {"/docker/58a032ee71c1030b5f0012ed2d12fc62cf3ac540013e76780e316c253971ce24":{"timestamp":"2017-10-12T14:49:27.186757129Z","latest_usage":{"cpu":19,"memory":39944192},"minute_usage":{"percent_complete":100,"cpu":{"present":true,"mean":29,"max":107,"fifty":25,"ninety":47,"ninetyfive":57},"memory":{"present":true,"mean":40017920,"max":40017920,"fifty":40017920,"ninety":40017920,"ninetyfive":40017920}},"hour_usage":{"percent_complete":100,"cpu":{"present":true,"mean":28,"max":147,"fifty":44,"ninety":49,"ninetyfive":50},"memory":{"present":true,"mean":42015726,"max":59813888,"fifty":40640512,"ninety":48585523,"ninetyfive":51488153}},"day_usage":{"percent_complete":4,"cpu":{"present":true,"mean":28,"max":147,"fifty":44,"ninety":49,"ninetyfive":50},"memory":{"present":true,"mean":42015726,"max":59813888,"fifty":40640512,"ninety":48585523,"ninetyfive":51488153}}}}*/
@@ -119,7 +115,7 @@ public class CAdvisorMonitor implements Runnable {
     }
     /** Quits the polling of the cadvisor. */
     public void stopMonitoring(){
-        thread.interrupt();
+        if (thread!=null)thread.interrupt();
     }
 
     @Override

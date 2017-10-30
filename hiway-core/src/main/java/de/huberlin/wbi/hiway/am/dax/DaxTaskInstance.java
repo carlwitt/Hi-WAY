@@ -32,16 +32,12 @@
  ******************************************************************************/
 package de.huberlin.wbi.hiway.am.dax;
 
-import de.huberlin.wbi.hiway.am.WorkflowDriver;
 import de.huberlin.wbi.hiway.common.Data;
 import de.huberlin.wbi.hiway.common.TaskInstance;
-import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.yarn.api.records.Container;
 import org.apache.hadoop.yarn.api.records.LocalResource;
 
 import java.util.*;
-
-// is not really hadoop, just the first best tool to concat paths
 
 public class DaxTaskInstance extends TaskInstance {
 

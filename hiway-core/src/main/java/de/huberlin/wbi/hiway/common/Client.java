@@ -268,7 +268,7 @@ public class Client {
 			try {
 				Thread.sleep(1000);
 			} catch (InterruptedException e) {
-				System.out.println("Thread sleep in monitoring loop interrupted");
+				System.out.println("Thread sleep in monitoring run interrupted");
 			}
 
 			// Get application report for the appId we are interested in
@@ -278,17 +278,17 @@ public class Client {
 			FinalApplicationStatus dsStatus = report.getFinalApplicationStatus();
 			if (YarnApplicationState.FINISHED == state) {
 				if (FinalApplicationStatus.SUCCEEDED == dsStatus) {
-					System.out.println("Application has completed successfully. Breaking monitoring loop");
+					System.out.println("Application has completed successfully. Breaking monitoring run");
 					System.out.println(report.getDiagnostics());
 					return true;
 				}
 				System.out.println("Application finished unsuccessfully." + " YarnState=" + state.toString() + ", DSFinalStatus=" + dsStatus.toString()
-						+ ". Breaking monitoring loop");
+						+ ". Breaking monitoring run");
 
 				return false;
 			} else if (YarnApplicationState.KILLED == state || YarnApplicationState.FAILED == state) {
 				System.out.println("Application did not finish." + " YarnState=" + state.toString() + ", DSFinalStatus=" + dsStatus.toString()
-						+ ". Breaking monitoring loop");
+						+ ". Breaking monitoring run");
 				return false;
 			}
 			if (System.currentTimeMillis() > (clientStartTime + clientTimeout)) {
