@@ -115,7 +115,7 @@ public abstract class StaticScheduler extends WorkflowScheduler {
 	}
 
 	@Override
-	protected void newHost(String nodeId) {
+	public void newHost(String nodeId) {
 		super.newHost(nodeId);
 		Queue<TaskInstance> queue = new LinkedList<>();
 		readyTasksByNode.put(nodeId, queue);

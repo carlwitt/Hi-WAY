@@ -30,10 +30,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  ******************************************************************************/
-package de.huberlin.wbi.hiway.scheduler;
+package de.huberlin.wbi.hiway.monitoring;
 
-public class RuntimeEstimate extends Estimate {
-	public long averageRuntime = 0;
-	public int finishedTasks = 0;
-	public long timeSpent = 0;
+public class Estimate {
+	public String taskName;
+	public double weight = 1d;
+
+	public static class RuntimeEstimate extends Estimate {
+        public long averageRuntime = 0;
+        public int finishedTasks = 0;
+        public long timeSpent = 0;
+    }
 }

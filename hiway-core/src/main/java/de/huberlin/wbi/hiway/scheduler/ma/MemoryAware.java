@@ -98,7 +98,7 @@ public class MemoryAware extends WorkflowScheduler {
 		// see if there's an override memory specification for the task type, otherwise use the default
 		int memory = customMemoryMap.containsKey(task.getTaskName()) ? customMemoryMap.get(task.getTaskName()) : containerMemoryMegaBytes;
 
-		WorkflowDriver.writeToStdout("Adding task " + task + " to queue " + memory);
+		/* log */ WorkflowDriver.writeToStdout("Adding task " + task + " to queue " + memory);
 		unissuedContainerRequests.add(setupContainerAskForRM(new String[0], memory));
 
 		if (!queuePerMem.containsKey(memory)) {

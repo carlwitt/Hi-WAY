@@ -166,7 +166,7 @@ public class CuneiformJApplicationMaster extends WorkflowDriver {
 		}
 
 		Invocation invocation = ((CuneiformJTaskInstance) task).getInvocation();
-		if (!task.retry(getConf().getInt(HiWayConfiguration.HIWAY_AM_TASK_RETRIES, HiWayConfiguration.HIWAY_AM_TASK_RETRIES_DEFAULT))) {
+		if (!task.retry(getConf().getInt(HiWayConfiguration.HIWAY_SCHEDULER_TASK_RETRIES, HiWayConfiguration.HIWAY_SCHEDULER_TASK_RETRIES_DEFAULT))) {
 			ticketSrc.sendMsg(new TicketFailedMsg(creActor, invocation.getTicket(), null, task.getCommand(), stdOut, stdErr));
 		}
 	}

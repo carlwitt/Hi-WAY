@@ -67,7 +67,7 @@ public class GreedyQueue extends WorkflowScheduler {
 	public void addTaskToQueue(TaskInstance task) {
 		unissuedContainerRequests.add(setupContainerAskForRM(new String[0], containerMemoryMegaBytes));
 		queue.add(task);
-		WorkflowDriver.writeToStdout("Added task " + task + " to queue");
+		/* log */ WorkflowDriver.writeToStdout("Added task " + task + " to queue");
 	}
 
 	@Override
@@ -76,7 +76,7 @@ public class GreedyQueue extends WorkflowScheduler {
 		numberOfRunningTasks++;
 		TaskInstance task = queue.remove();
 
-		WorkflowDriver.writeToStdout("Assigned task " + task + " to container " + container.getId() + "@" + container.getNodeId().getHost());
+		/* log */ WorkflowDriver.writeToStdout("Assigned task " + task + " to container " + container.getId() + "@" + container.getNodeId().getHost());
 		task.incTries();
 		return task;
 	}

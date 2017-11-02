@@ -60,7 +60,7 @@ class LaunchContainerRunnable implements Runnable {
 		this.am = am;
 
 		String hostName = lcontainer.getNodeHttpAddress().split(":")[0];
-		String cadvisorPort = am.getConf().get(HiWayConfiguration.HIWAY_MONITORING_CADVISOR_PORT);
+		String cadvisorPort = am.getConf().get(HiWayConfiguration.HIWAY_MONITORING_CADVISOR_PORT, HiWayConfiguration.HIWAY_MONITORING_CADVISOR_PORT_DEFAULT);
 		this.resourceUsagePolling = new CAdvisorMonitor(hostName  + ":" + cadvisorPort, task.getDockerContainerName());
 
 	}

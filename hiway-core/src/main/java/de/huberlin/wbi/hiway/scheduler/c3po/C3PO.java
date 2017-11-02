@@ -53,8 +53,7 @@ import de.huberlin.hiwaydb.useDB.InvocStat;
 import de.huberlin.wbi.hiway.am.WorkflowDriver;
 import de.huberlin.wbi.hiway.common.HiWayConfiguration;
 import de.huberlin.wbi.hiway.common.TaskInstance;
-import de.huberlin.wbi.hiway.scheduler.Estimate;
-import de.huberlin.wbi.hiway.scheduler.RuntimeEstimate;
+import de.huberlin.wbi.hiway.monitoring.Estimate;
 import de.huberlin.wbi.hiway.scheduler.WorkflowScheduler;
 
 /**
@@ -310,9 +309,9 @@ public class C3PO extends WorkflowScheduler {
 	 * this node is good at */
 	private void computeTaskStatisticsWeights() {
 		for (long taskId : getTaskIds()) {
-			Collection<RuntimeEstimate> taskStatistics = new ArrayList<>();
+			Collection<Estimate.RuntimeEstimate> taskStatistics = new ArrayList<>();
 			for (String nodeId : getNodeIds()) {
-				RuntimeEstimate taskStatistic = runtimeEstimatesPerNode.get(nodeId).get(taskId);
+				Estimate.RuntimeEstimate taskStatistic = provenanceManager.runtimeEstimatesPerNode.get(nodeId).get(taskId);
 				taskStatistic.weight = (taskStatistic.finishedTasks != 0) ? 1d / taskStatistic.averageRuntime : Long.MAX_VALUE;
 				taskStatistics.add(taskStatistic);
 			}
@@ -321,7 +320,7 @@ public class C3PO extends WorkflowScheduler {
 		if (HiWayConfiguration.verbose)
 			printTaskStatisticsWeights();
 		for (String nodeId : getNodeIds())
-			normalizeWeights(runtimeEstimatesPerNode.get(nodeId).values());
+			normalizeWeights(provenanceManager.runtimeEstimatesPerNode.get(nodeId).values());
 	}
 
 	@Override
@@ -334,7 +333,7 @@ public class C3PO extends WorkflowScheduler {
 		boolean replicate = getNumberOfReadyTasks() == 0;
 
 		String nodeId = container.getNodeId().getHost();
-		if (!runtimeEstimatesPerNode.containsKey(nodeId)) {
+		if (!provenanceManager.runtimeEstimatesPerNode.containsKey(nodeId)) {
 			newHost(nodeId);
 		}
 
@@ -345,14 +344,14 @@ public class C3PO extends WorkflowScheduler {
 		Map<Long, Estimate> combinedWeights = new HashMap<>();
 		for (long taskId : getTaskIds())
 			combinedWeights.put(taskId, new Estimate());
-		multiplyWeights(combinedWeights, runtimeEstimatesPerNode.get(nodeId), conservatismWeight);
+		multiplyWeights(combinedWeights, provenanceManager.runtimeEstimatesPerNode.get(nodeId), conservatismWeight);
 		multiplyWeights(combinedWeights, jobStatistics, outlookWeight);
 		multiplyWeights(combinedWeights, dataLocalityStatistics, placementAwarenessWeight);
 		normalizeWeights(combinedWeights.values());
 
 		if (HiWayConfiguration.verbose) {
 			WorkflowDriver.writeToStdout("Updated Decision Vector for node " + nodeId + ":");
-			WorkflowDriver.writeToStdout("\tConservatism (x" + (int) (conservatismWeight + 0.5d) + ")\t" + printWeights(runtimeEstimatesPerNode.get(nodeId)));
+			WorkflowDriver.writeToStdout("\tConservatism (x" + (int) (conservatismWeight + 0.5d) + ")\t" + printWeights(provenanceManager.runtimeEstimatesPerNode.get(nodeId)));
 			WorkflowDriver.writeToStdout("\tOutlook (x" + (int) (outlookWeight + 0.5d) + ")\t\t" + printWeights(jobStatistics));
 			WorkflowDriver.writeToStdout("\tPlacement (x" + (int) (placementAwarenessWeight + 0.5d) + ")\t\t" + printWeights(dataLocalityStatistics));
 			WorkflowDriver.writeToStdout("\tCombined\t\t" + printWeights(combinedWeights));
@@ -431,14 +430,14 @@ public class C3PO extends WorkflowScheduler {
 	}
 
 	@Override
-	protected void newTask(long taskId) {
+	public void newTask(long taskId) {
 		super.newTask(taskId);
 		WorkflowDriver.writeToStdout("HiwayDB: Querying Task Name for Task Id " + taskId + " from database.");
-		String taskName = dbInterface.getTaskName(taskId);
+		String taskName = provenanceManager.dbInterface.getTaskName(taskId);
 		taskIdToName.put(taskId, taskName);
 		WorkflowDriver.writeToStdout("HiwayDB: Retrieved Task Name " + taskName + " from database.");
-		for (Map<Long, RuntimeEstimate> runtimeEstimates : runtimeEstimatesPerNode.values()) {
-			runtimeEstimates.put(taskId, new RuntimeEstimate());
+		for (Map<Long, Estimate.RuntimeEstimate> runtimeEstimates : provenanceManager.runtimeEstimatesPerNode.values()) {
+			runtimeEstimates.put(taskId, new Estimate.RuntimeEstimate());
 		}
 		jobStatistics.put(taskId, new OutlookEstimate());
 		dataLocalityStatistics.put(taskId, new PlacementAwarenessEstimate());
@@ -498,7 +497,7 @@ public class C3PO extends WorkflowScheduler {
 
 			row = new StringBuilder();
 			for (long taskId : getTaskIds()) {
-				RuntimeEstimate taskStatistic = runtimeEstimatesPerNode.get(nodeId).get(taskId);
+				Estimate.RuntimeEstimate taskStatistic = provenanceManager.runtimeEstimatesPerNode.get(nodeId).get(taskId);
 				row.append("\t").append(df.format(taskStatistic.averageRuntime)).append("\t").append(df.format(taskStatistic.weight));
 			}
 
@@ -545,7 +544,7 @@ public class C3PO extends WorkflowScheduler {
 	@Override
 	public Collection<ContainerId> taskCompleted(TaskInstance task, ContainerStatus containerStatus, long runtimeInMs) {
 		super.taskCompleted(task, containerStatus, runtimeInMs);
-		updateRuntimeEstimates(task.getWorkflowId().toString());
+        provenanceManager.updateRuntimeEstimates(task.getWorkflowId().toString());
 		Collection<ContainerId> toBeReleasedContainers = new ArrayList<>();
 
 		// kill speculative copies
@@ -581,7 +580,7 @@ public class C3PO extends WorkflowScheduler {
 	}
 
 	@Override
-	protected void updateRuntimeEstimate(InvocStat stat) {
+	public void updateRuntimeEstimate(InvocStat stat) {
 		super.updateRuntimeEstimate(stat);
 		OutlookEstimate jobStatistic = jobStatistics.get(stat.getTaskId());
 		jobStatistic.finishedTasks++;

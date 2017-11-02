@@ -49,7 +49,6 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
-import org.apache.avro.data.Json;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.GnuParser;
 import org.apache.commons.cli.HelpFormatter;
@@ -67,7 +66,6 @@ import org.apache.hadoop.yarn.api.ApplicationConstants;
 import org.apache.hadoop.yarn.api.ApplicationConstants.Environment;
 import org.apache.hadoop.yarn.api.protocolrecords.RegisterApplicationMasterResponse;
 import org.apache.hadoop.yarn.api.records.*;
-import org.apache.hadoop.yarn.client.api.AMRMClient;
 import org.apache.hadoop.yarn.client.api.AMRMClient.ContainerRequest;
 import org.apache.hadoop.yarn.client.api.async.AMRMClientAsync;
 import org.apache.hadoop.yarn.client.api.async.NMClientAsync;
@@ -103,10 +101,8 @@ public abstract class WorkflowDriver {
 	/**
 	 * The main routine.
 	 *
-	 * @param appMaster
-	 *            The Application Master
-	 * @param args
-	 *            Command line arguments passed to the ApplicationMaster.
+	 * @param appMaster The Application Master
+	 * @param args Command line arguments passed to the ApplicationMaster.
 	 */
 	public static void launch(WorkflowDriver appMaster, String[] args) {
 		boolean result = false;
@@ -123,7 +119,7 @@ public abstract class WorkflowDriver {
 			System.exit(-1);
 		}
 		if (result) {
-			WorkflowDriver.writeToStdout("Application Master completed successfully. exiting");
+			WorkflowDriver.writeToStdout("Application Master completed successfully. Exiting");
 			System.exit(0);
 		} else {
 			WorkflowDriver.writeToStdout("Application Master failed. exiting");
@@ -134,7 +130,7 @@ public abstract class WorkflowDriver {
 
 	// Hadoop interface
 	/** a handle to interact with the YARN ResourceManager */
-	private AMRMClientAsync amRMClient;
+	private AMRMClientAsync<ContainerRequest> amRMClient;
 	/** a listener for processing the responses from the NodeManagers */
 	private NMCallbackHandler containerListener;
 	/** a handle to communicate with the YARN NodeManagers */
@@ -220,38 +216,26 @@ public abstract class WorkflowDriver {
 	}
 
 
-	/** Does work in a while run as long as not interrupted. Sleeps in between iterations to throttle. */
-	@SuppressWarnings("unchecked")
-	protected void loop() {
-		try {
-			while (scheduler.hasNextNodeRequest()) {
-				ContainerRequest request;
-				try {
-					request = scheduler.getNextNodeRequest();
-				} catch (NoSuchElementException e) {
-					e.printStackTrace(System.out);
-					break;
-				}
+	/** Issue all of the scheduler's unissued resource requests. */
+	protected void askForResources() {
+		
+		while (scheduler.hasNextNodeRequest()) {
 
-				/* log */ logContainerRequested(request);
+			// get the next unissued resource request of the scheduler
+			ContainerRequest request = scheduler.getNextNodeRequest();
+			// send the request to the YARN Resource Manager (asynchronously)
+			amRMClient.addContainerRequest(request);
 
-				amRMClient.addContainerRequest(request);
+			/* log */ logContainerRequested(request);
+			// remember total containers and memory used so far
+			/* acc */ numRequestedContainers.incrementAndGet();
+			/* acc */ totalContainerMemoryMB.addAndGet(request.getCapability().getMemory());
 
-				// remember total containers and memory used so far
-				numRequestedContainers.incrementAndGet();
-				totalContainerMemoryMB.addAndGet(request.getCapability().getMemory());
-
-			}
-			Thread.sleep(1000);
-
-			/* log */ WorkflowDriver.writeToStdout("Current application state: requested=" + numRequestedContainers + ", totalContainerMemoryMB=" + totalContainerMemoryMB + ",completed=" + numCompletedContainers + ", failed=" + numFailedContainers + ", killed=" + numKilledContainers + ", allocated=" + numAllocatedContainers);
-
-			/* log */ if (HiWayConfiguration.verbose) logOutstandingContainerRequests();
-
-		} catch (InterruptedException e) {
-			e.printStackTrace(System.out);
-			System.exit(-1);
 		}
+
+		/* log */ WorkflowDriver.writeToStdout("Current application state: requested=" + numRequestedContainers + ", totalContainerMemoryMB=" + totalContainerMemoryMB + ",completed=" + numCompletedContainers + ", failed=" + numFailedContainers + ", killed=" + numKilledContainers + ", allocated=" + numAllocatedContainers);
+		/* log */ if (HiWayConfiguration.verbose) logOutstandingContainerRequests();
+
 	}
 
 	private void logContainerRequested(ContainerRequest request) {
@@ -278,7 +262,7 @@ public abstract class WorkflowDriver {
 		StringBuilder sb = new StringBuilder("Open Container Requests: ");
 		Set<String> names = new HashSet<>();
 		names.add(ResourceRequest.ANY);
-		if (!scheduler.relaxLocality())
+		if (!scheduler.getRelaxLocality())
             names = scheduler.getDbInterface().getHostNames();
 		for (String node : names) {
             List<? extends Collection<ContainerRequest>> requestCollections = amRMClient.getMatchingRequests(
@@ -841,7 +825,8 @@ public abstract class WorkflowDriver {
 			}
 
 			while (!isDone()) {
-				loop();
+				askForResources();
+				Thread.sleep(1000);
 			}
 			finish();
 		} catch (Exception e) {

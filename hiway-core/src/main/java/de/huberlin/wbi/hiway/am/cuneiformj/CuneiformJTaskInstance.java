@@ -68,7 +68,6 @@ public class CuneiformJTaskInstance extends TaskInstance {
 		throw new WorkflowStructureUnknownException(HIWAY_WORKFLOW_LANGUAGE_OPTS.cuneiformJ);
 	}
 	
-	@Override
 	public Set<TaskInstance> getParentTasks() throws WorkflowStructureUnknownException {
 		throw new WorkflowStructureUnknownException(HIWAY_WORKFLOW_LANGUAGE_OPTS.cuneiformJ);
 	}

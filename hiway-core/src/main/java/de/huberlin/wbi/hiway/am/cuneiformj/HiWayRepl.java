@@ -40,7 +40,7 @@ import de.huberlin.wbi.cuneiform.core.semanticmodel.NotDerivableException;
 import de.huberlin.wbi.cuneiform.core.ticketsrc.TicketSrcActor;
 import de.huberlin.wbi.hiway.am.WorkflowDriver;
 
-//Repl - Read evaluation print loop
+//Repl - Read evaluation print askForResources
 class HiWayRepl extends BaseRepl {
 
 	private final CuneiformJApplicationMaster am;

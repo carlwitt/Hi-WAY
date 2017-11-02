@@ -246,6 +246,7 @@ public class TaskInstance implements Comparable<TaskInstance> {
 		return tries;
 	}
 
+	/** @return Whether the number of tries is lower or equal to maxRetries */
 	public boolean retry(int maxRetries) {
 		return tries <= maxRetries;
 	}

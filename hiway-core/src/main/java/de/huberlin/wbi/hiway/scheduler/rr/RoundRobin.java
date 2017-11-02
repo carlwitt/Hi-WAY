@@ -44,7 +44,8 @@ import de.huberlin.wbi.hiway.scheduler.DepthComparator;
 import de.huberlin.wbi.hiway.scheduler.StaticScheduler;
 
 /**
- * The static round robin scheduler that traverses the workflow from the beginning to the end, assigning tasks to compute resources in turn.
+ * Static round robin scheduler that iterates over the tasks of a workflow in order of the task depth (see {@link DepthComparator}).
+ * Tasks are assigned to compute resources in a cyclic manner.
  * 
  * @author Marc Bux
  * 

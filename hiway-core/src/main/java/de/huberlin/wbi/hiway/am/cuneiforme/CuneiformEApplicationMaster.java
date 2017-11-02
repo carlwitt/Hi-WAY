@@ -96,14 +96,14 @@ public class CuneiformEApplicationMaster extends WorkflowDriver {
 	}
 
 	@Override
-	protected void loop() {
+	protected void askForResources() {
 		try {
 			workflow.update();
 		} catch (IOException e) {
 			e.printStackTrace(System.out);
 		}
 		getScheduler().addTasks(getNextTasks());
-		super.loop();
+		super.askForResources();
 	}
 
 	@Override
