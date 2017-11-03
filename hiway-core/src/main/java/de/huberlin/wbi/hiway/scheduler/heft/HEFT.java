@@ -165,7 +165,7 @@ public class HEFT extends StaticScheduler {
 		if (HiWayConfiguration.verbose)
 			WorkflowDriver.writeToStdout("Task " + task + " scheduled on node " + bestNode);
 		if (task.readyToExecute()) {
-			addTaskToQueue(task);
+			enqueueResourceRequest(task);
 		}
 
 		// update readytime of all successor tasks

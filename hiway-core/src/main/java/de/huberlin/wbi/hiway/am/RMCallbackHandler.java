@@ -179,7 +179,7 @@ class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 			/* acc */ long tic = System.currentTimeMillis();
 
 			// ask scheduler for a task to run in this container
-			TaskInstance task = am.getScheduler().getTask(allocatedContainer);
+			TaskInstance task = am.getScheduler().scheduleTaskToContainer(allocatedContainer);
 
 			/* acc */ long toc = System.currentTimeMillis();
 

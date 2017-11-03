@@ -86,12 +86,14 @@ public abstract class WorkflowScheduler {
 		provenanceManager.setHdfs(hdfs_);
 	}
 
-	/** Offer the task to the scheduler. If it's not ready, it will be discarded in some schedulers? */
+	/** If the task is ready, call {@link #enqueueResourceRequest(TaskInstance)}.
+	 * This is used on initialization, but also in case of task failure (to readd the task). */
 	protected abstract void addTask(TaskInstance task);
 
 	/** Really put the task into the queue(?) as opposed to adding only if it's ready?  */
-	public abstract void addTaskToQueue(TaskInstance task);
+	public abstract void enqueueResourceRequest(TaskInstance task);
 
+	/** Call {@link #addTask(TaskInstance)} for each task in tasks. */
 	public void addTasks(Collection<TaskInstance> tasks) {
 		for (TaskInstance task : tasks) {
 			addTask(task);
@@ -99,7 +101,7 @@ public abstract class WorkflowScheduler {
 	}
 
 	/** Offer a YARN resource container to the scheduler to get a task back to run in the container. */
-	public abstract TaskInstance getTask(Container container);
+	public abstract TaskInstance scheduleTaskToContainer(Container container);
 
 	/** @return the number of tasks that are eligible for execution. */
 	public abstract int getNumberOfReadyTasks();

@@ -218,7 +218,7 @@ public abstract class WorkflowDriver {
 
 	/** Issue all of the scheduler's unissued resource requests. */
 	protected void askForResources() {
-		
+
 		while (scheduler.hasNextNodeRequest()) {
 
 			// get the next unissued resource request of the scheduler
@@ -283,10 +283,9 @@ public abstract class WorkflowDriver {
 	}
 
 	/**
-	 * What does this do? Nobody knows!
+	 * Reads the stdout and stderr from a task and pastes the result into the application log.
 	 */
-	@SuppressWarnings("static-method")
-	public void evaluateReport(TaskInstance task, ContainerId containerId) {
+	void evaluateReport(TaskInstance task, ContainerId containerId) {
 		try {
 			Data reportFile = new Data(task.getId() + "_" + Invocation.REPORT_FILENAME, containerId.toString());
 			reportFile.stageIn();
@@ -698,12 +697,14 @@ public abstract class WorkflowDriver {
 	 *             IOException
 	 */
 	private boolean run() throws IOException {
-		WorkflowDriver.writeToStdout("Starting ApplicationMaster");
+		/* log */ WorkflowDriver.writeToStdout("Starting ApplicationMaster");
 
 		Credentials credentials = UserGroupInformation.getCurrentUser().getCredentials();
+
 		try (DataOutputBuffer dob = new DataOutputBuffer()) {
+
 			credentials.writeTokenStorageToStream(dob);
-			// Now remove the AM->RM token so that containers cannot access it.
+			// remove the AM->RM token so that containers cannot access it.
 			Iterator<Token<?>> iter = credentials.getAllTokens().iterator();
 			while (iter.hasNext()) {
 				Token<?> token = iter.next();
@@ -713,16 +714,19 @@ public abstract class WorkflowDriver {
 			}
 			allTokens = ByteBuffer.wrap(dob.getData(), 0, dob.getLength());
 
+			// Resource Manager communications setup
 			RMCallbackHandler allocListener = new RMCallbackHandler(this);
 			amRMClient = AMRMClientAsync.createAMRMClientAsync(1000, allocListener);
 			amRMClient.init(conf);
 			amRMClient.start();
 
+			// Node Managers communications setup
 			containerListener = new NMCallbackHandler(this);
 			nmClientAsync = new NMClientAsyncImpl(containerListener);
 			nmClientAsync.init(conf);
 			nmClientAsync.start();
 
+			// get workflow file
 			if (hdfs.exists(workflowPath)) {
 				Path localPath = new Path(workflowPath.getName());
 				hdfs.copyToLocalFile(false, workflowPath, localPath);
@@ -749,8 +753,7 @@ public abstract class WorkflowDriver {
 				case roundRobin:
 				case heft:
 					int workerMemory = conf.getInt(YarnConfiguration.NM_PMEM_MB, YarnConfiguration.DEFAULT_NM_PMEM_MB);
-					scheduler = schedulerName.equals(HiWayConfiguration.HIWAY_SCHEDULER_OPTS.roundRobin) ? new RoundRobin(getWorkflowName()) : new HEFT(
-							getWorkflowName(), workerMemory / containerMemory);
+					scheduler = schedulerName.equals(HiWayConfiguration.HIWAY_SCHEDULER_OPTS.roundRobin) ? new RoundRobin(getWorkflowName()) : new HEFT(getWorkflowName(), workerMemory / containerMemory);
 					break;
 				case greedy:
 					scheduler = new GreedyQueue(getWorkflowName());
@@ -761,30 +764,12 @@ public abstract class WorkflowDriver {
 				default:
 					C3PO c3po = new C3PO(getWorkflowName());
 					switch (schedulerName) {
-						// case conservative:
-						// c3po.setConservatismWeight(12d);
-						// c3po.setnClones(0);
-						// c3po.setPlacementAwarenessWeight(0.01d);
-						// c3po.setOutlookWeight(0.01d);
-						// break;
-						// case cloning:
-						// c3po.setConservatismWeight(0.01d);
-						// c3po.setnClones(1);
-						// c3po.setPlacementAwarenessWeight(0.01d);
-						// c3po.setOutlookWeight(0.01d);
-						// break;
 						case dataAware:
 							c3po.setConservatismWeight(0.01d);
 							c3po.setnClones(0);
 							c3po.setPlacementAwarenessWeight(12d);
 							c3po.setOutlookWeight(0.01d);
 							break;
-						// case outlooking:
-						// c3po.setConservatismWeight(0.01d);
-						// c3po.setnClones(0);
-						// c3po.setPlacementAwarenessWeight(0.01d);
-						// c3po.setOutlookWeight(12d);
-						// break;
 						default:
 							c3po.setConservatismWeight(3d);
 							c3po.setnClones(2);
@@ -890,7 +875,7 @@ public abstract class WorkflowDriver {
 		try {
 			for (TaskInstance childTask : task.getChildTasks()) {
 				if (childTask.readyToExecute())
-					scheduler.addTaskToQueue(childTask);
+					scheduler.enqueueResourceRequest(childTask);
 			}
 		} catch (WorkflowStructureUnknownException e) {
 			e.printStackTrace(System.out);

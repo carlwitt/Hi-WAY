@@ -247,11 +247,11 @@ public class C3PO extends WorkflowScheduler {
 
 		jobStatistics.get(taskId).remainingTasks++;
 		if (task.readyToExecute())
-			addTaskToQueue(task);
+			enqueueResourceRequest(task);
 	}
 
 	@Override
-	public void addTaskToQueue(TaskInstance task) {
+	public void enqueueResourceRequest(TaskInstance task) {
 		unissuedContainerRequests.add(setupContainerAskForRM(new String[0], containerMemoryMegaBytes));
 		readyTasks.get(task.getTaskId()).add(task);
 		WorkflowDriver.writeToStdout("Added task " + task + " to queue " + task.getTaskName());
@@ -324,7 +324,7 @@ public class C3PO extends WorkflowScheduler {
 	}
 
 	@Override
-	public TaskInstance getTask(Container container) {
+	public TaskInstance scheduleTaskToContainer(Container container) {
 		TaskInstance task = null;
 
 		numberOfRemainingTasks--;

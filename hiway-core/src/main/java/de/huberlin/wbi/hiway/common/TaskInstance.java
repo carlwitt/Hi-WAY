@@ -286,9 +286,7 @@ public class TaskInstance implements Comparable<TaskInstance> {
 		return outputData;
 	}
 
-	public void setCompleted() {
-		completed = true;
-	}
+	public void setCompleted() { completed = true; }
 
 	public Set<JsonReportEntry> getReport() {
 		return report;

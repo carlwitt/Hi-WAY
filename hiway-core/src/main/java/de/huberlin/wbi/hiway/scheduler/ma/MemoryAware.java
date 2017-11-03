@@ -86,13 +86,13 @@ public class MemoryAware extends WorkflowScheduler {
 	protected void addTask(TaskInstance task) {
 		numberOfRemainingTasks++;
 		if (task.readyToExecute())
-			addTaskToQueue(task);
+			enqueueResourceRequest(task);
 	}
 
 
 	/** prepares are container request of the matching memory size, puts the task into the queue for the calculated memory size */
 	@Override
-	public void addTaskToQueue(TaskInstance task) {
+	public void enqueueResourceRequest(TaskInstance task) {
 
 		// decide on the memory for the task
 		// see if there's an override memory specification for the task type, otherwise use the default
@@ -108,7 +108,7 @@ public class MemoryAware extends WorkflowScheduler {
 	}
 
 	@Override
-	public TaskInstance getTask(Container container) {
+	public TaskInstance scheduleTaskToContainer(Container container) {
 		numberOfRemainingTasks--;
 		numberOfRunningTasks++;
 

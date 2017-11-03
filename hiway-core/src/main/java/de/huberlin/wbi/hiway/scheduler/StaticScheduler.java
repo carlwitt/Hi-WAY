@@ -80,7 +80,7 @@ public abstract class StaticScheduler extends WorkflowScheduler {
 	 * @param task
 	 */
 	@Override
-	public void addTaskToQueue(TaskInstance task) {
+	public void enqueueResourceRequest(TaskInstance task) {
 		String node = schedule.get(task);
 		unissuedContainerRequests.add(setupContainerAskForRM(new String[]{node}, containerMemoryMegaBytes));
 		readyTasksByNode.get(node).add(task);
@@ -89,7 +89,7 @@ public abstract class StaticScheduler extends WorkflowScheduler {
 	}
 
 	@Override
-	public TaskInstance getTask(Container container) {
+	public TaskInstance scheduleTaskToContainer(Container container) {
 		numberOfRemainingTasks--;
 		numberOfRunningTasks++;
 		String node = container.getNodeId().getHost();

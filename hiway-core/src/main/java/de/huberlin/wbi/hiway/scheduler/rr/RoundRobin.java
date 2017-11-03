@@ -71,7 +71,7 @@ public class RoundRobin extends StaticScheduler {
 		schedule.put(task, node);
 		WorkflowDriver.writeToStdout("Task " + task + " scheduled on node " + node);
 		if (task.readyToExecute()) {
-			addTaskToQueue(task);
+			enqueueResourceRequest(task);
 		}
 	}
 
