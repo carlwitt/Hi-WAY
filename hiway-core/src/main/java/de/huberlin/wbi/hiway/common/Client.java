@@ -1,35 +1,35 @@
-/*******************************************************************************
- * In the Hi-WAY project we propose a novel approach of executing scientific
- * workflows processing Big Data, as found in NGS applications, on distributed
- * computational infrastructures. The Hi-WAY software stack comprises the func-
- * tional workflow language Cuneiform as well as the Hi-WAY ApplicationMaster
- * for Apache Hadoop 2.x (YARN).
- *
- * List of Contributors:
- *
- * Marc Bux (HU Berlin)
- * Jörgen Brandt (HU Berlin)
- * Hannes Schuh (HU Berlin)
- * Ulf Leser (HU Berlin)
- *
- * Jörgen Brandt is funded by the European Commission through the BiobankCloud
- * project. Marc Bux is funded by the Deutsche Forschungsgemeinschaft through
- * research training group SOAMED (GRK 1651).
- *
- * Copyright 2014 Humboldt-Universität zu Berlin
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- ******************************************************************************/
+/******************************************************************************
+ In the Hi-WAY project we propose a novel approach of executing scientific
+ workflows processing Big Data, as found in NGS applications, on distributed
+ computational infrastructures. The Hi-WAY software stack comprises the func-
+ tional workflow language Cuneiform as well as the Hi-WAY ApplicationMaster
+ for Apache Hadoop 2.x (YARN).
+
+ List of Contributors:
+
+ Marc Bux (HU Berlin)
+ Jörgen Brandt (HU Berlin)
+ Hannes Schuh (HU Berlin)
+ Ulf Leser (HU Berlin)
+
+ Jörgen Brandt is funded by the European Commission through the BiobankCloud
+ project. Marc Bux is funded by the Deutsche Forschungsgemeinschaft through
+ research training group SOAMED (GRK 1651).
+
+ Copyright 2014 Humboldt-Universität zu Berlin
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+ http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ */
 package de.huberlin.wbi.hiway.common;
 
 import java.io.BufferedReader;
@@ -132,7 +132,7 @@ public class Client {
 	private String memory;
 	// command line options
 	private final Options opts;
-	private HiWayConfiguration.HIWAY_SCHEDULER_OPTS schedulerName;
+	private HiWayConfiguration.HIWAY_SCHEDULERS schedulerName;
 	private Data summary;
 	private Path summaryPath;
 	private String customMemPath;
@@ -157,7 +157,7 @@ public class Client {
 		opts.addOption("u", "summary", true, "The name of the json summary file. No file is created if this parameter is not specified.");
 		opts.addOption("m", "memory", true, "The amount of memory (in MB) to be allocated per worker container. Overrides settings in hiway-site.xml.");
 		opts.addOption("c", "custom", true, "The name of an (optional) JSON file, in which custom amounts of memory can be specified per task.");
-		opts.addOption("s", "scheduler", true, "The scheduling policy that is to be employed. Valid arguments: " + Arrays.toString(HiWayConfiguration.HIWAY_SCHEDULER_OPTS.values()) + "."
+		opts.addOption("s", "scheduler", true, "The scheduling policy that is to be employed. Valid arguments: " + Arrays.toString(HiWayConfiguration.HIWAY_SCHEDULERS.values()) + "."
 				+ " Overrides settings in hiway-site.xml.");
 		StringBuilder workflowFormats = new StringBuilder();
 		for (HiWayConfiguration.HIWAY_WORKFLOW_LANGUAGE_OPTS language : HiWayConfiguration.HIWAY_WORKFLOW_LANGUAGE_OPTS.values()) {
@@ -206,8 +206,8 @@ public class Client {
 		if (amVCores <= 0) throw new IllegalArgumentException("Invalid vCores specified for application master, exiting." + " Specified vCores=" + amVCores);
 		amMemory = conf.getInt(HiWayConfiguration.HIWAY_AM_MEMORY, HiWayConfiguration.HIWAY_AM_MEMORY_DEFAULT);
 		if (amMemory <= 0) throw new IllegalArgumentException("Invalid memory specified for application master, exiting." + " Specified memory=" + amMemory);
-		schedulerName = HiWayConfiguration.HIWAY_SCHEDULER_OPTS.valueOf(conf.get(HiWayConfiguration.HIWAY_SCHEDULER,HiWayConfiguration.HIWAY_SCHEDULER_DEFAULT.toString()));
-		schedulerName = HiWayConfiguration.HIWAY_SCHEDULER_OPTS.valueOf(conf.get(HiWayConfiguration.HIWAY_SCHEDULER,HiWayConfiguration.HIWAY_SCHEDULER_DEFAULT.toString()));
+		schedulerName = HiWayConfiguration.HIWAY_SCHEDULERS.valueOf(conf.get(HiWayConfiguration.HIWAY_SCHEDULER,HiWayConfiguration.HIWAY_SCHEDULER_DEFAULT.toString()));
+		schedulerName = HiWayConfiguration.HIWAY_SCHEDULERS.valueOf(conf.get(HiWayConfiguration.HIWAY_SCHEDULER,HiWayConfiguration.HIWAY_SCHEDULER_DEFAULT.toString()));
 		clientTimeout = conf.getInt(HiWayConfiguration.HIWAY_AM_TIMEOUT, HiWayConfiguration.HIWAY_AM_TIMEOUT_DEFAULT) * 1000;
 		for (String extension : HiWayConfiguration.HIWAY_WORKFLOW_LANGUAGE_EXTS.keySet()) {
 			if (workflowParam.endsWith(extension)) {
@@ -223,9 +223,9 @@ public class Client {
 		// execution specifics
 		if (cliParser.hasOption("memory")) memory = cliParser.getOptionValue("memory");
 		if (cliParser.hasOption("language")) workflowType = HiWayConfiguration.HIWAY_WORKFLOW_LANGUAGE_OPTS.valueOf(cliParser.getOptionValue("language", HiWayConfiguration.HIWAY_WORKFLOW_LANGUAGE_OPTS.cuneiformE.toString()));
-		if (cliParser.hasOption("scheduler")) schedulerName = HiWayConfiguration.HIWAY_SCHEDULER_OPTS.valueOf(cliParser.getOptionValue("scheduler"));
+		if (cliParser.hasOption("scheduler")) schedulerName = HiWayConfiguration.HIWAY_SCHEDULERS.valueOf(cliParser.getOptionValue("scheduler"));
 		if (cliParser.hasOption("custom")) {
-			if (!schedulerName.equals(HiWayConfiguration.HIWAY_SCHEDULER_OPTS.memoryAware)) {
+			if (!schedulerName.equals(HiWayConfiguration.HIWAY_SCHEDULERS.memoryAware)) {
 				System.out.println("The memory-aware scheduler has to be selected if a custom memory file is to be used. Aborting.");
 				System.exit(-1);
 			}

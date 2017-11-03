@@ -46,7 +46,7 @@ class LaunchContainerRunnable implements Runnable {
 	/** The task to be launched */
 	private final TaskInstance task;
 	/** Used for retrieving resource usage statistics over HTTP (cadvisor's REST API). */
-	private CAdvisorMonitor resourceUsagePolling;
+	private final CAdvisorMonitor resourceUsagePolling;
 	/**
 	 * @param lcontainer Allocated container
 	 * @param containerListener Callback handler of the container
@@ -70,7 +70,7 @@ class LaunchContainerRunnable implements Runnable {
 	 */
 	@Override
 	public void run() {
-		/* log */ if (HiWayConfiguration.verbose) WorkflowDriver.writeToStdout("Setting up container launch container for containerid=" + container.getId());
+		/* log */ if (HiWayConfiguration.verbose) WorkflowDriver.Logger.writeToStdout("Setting up container launch container for containerid=" + container.getId());
 
 		ContainerLaunchContext ctx = Records.newRecord(ContainerLaunchContext.class);
 

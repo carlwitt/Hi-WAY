@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
 
+import de.huberlin.wbi.hiway.am.WorkflowDriver;
 import de.huberlin.wbi.hiway.monitoring.Estimate;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.yarn.api.records.Container;
@@ -34,7 +35,6 @@ import org.apache.hadoop.yarn.client.api.AMRMClient.ContainerRequest;
 import de.huberlin.hiwaydb.useDB.HiwayDBI;
 import de.huberlin.hiwaydb.useDB.InvocStat;
 import de.huberlin.wbi.cuneiform.core.semanticmodel.JsonReportEntry;
-import de.huberlin.wbi.hiway.am.WorkflowDriver;
 import de.huberlin.wbi.hiway.common.HiWayConfiguration;
 import de.huberlin.wbi.hiway.common.TaskInstance;
 
@@ -140,7 +140,8 @@ public abstract class WorkflowScheduler {
 		numberOfRunningTasks--;
 		numberOfFinishedTasks++;
 
-		/* log */ WorkflowDriver.writeToStdout("Task " + task + " on container " + containerStatus.getContainerId() + " completed successfully after " + runtimeInMs + " ms");
+		/* log */
+		WorkflowDriver.Logger.writeToStdout("Task " + task + " on container " + containerStatus.getContainerId() + " completed successfully after " + runtimeInMs + " ms");
 
 		return new ArrayList<>();
 	}
@@ -151,12 +152,15 @@ public abstract class WorkflowScheduler {
 	public Collection<ContainerId> taskFailed(TaskInstance task, ContainerStatus containerStatus) {
 		numberOfRunningTasks--;
 
-		/* log */ WorkflowDriver.writeToStdout("Task " + task + " on container " + containerStatus.getContainerId() + " failed");
+		/* log */
+		WorkflowDriver.Logger.writeToStdout("Task " + task + " on container " + containerStatus.getContainerId() + " failed");
 		if (task.retry(maxRetries)) {
-			/* log */ WorkflowDriver.writeToStdout("Retrying task " + task + ".");
+			/* log */
+			WorkflowDriver.Logger.writeToStdout("Retrying task " + task + ".");
 			addTask(task);
 		} else {
-			/* log */ WorkflowDriver.writeToStdout("Task " + task + " has exceeded maximum number of allowed retries. Aborting workflow.");
+			/* log */
+			WorkflowDriver.Logger.writeToStdout("Task " + task + " has exceeded maximum number of allowed retries. Aborting workflow.");
 			System.exit(-1);
 		}
 

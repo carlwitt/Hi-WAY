@@ -61,7 +61,7 @@ import java.util.logging.Logger;
 public class CAdvisorMonitor implements Runnable {
 
     /** the task resource usage observed since the start of monitoring (i.e., should be the same as the container lifetime) */
-    private TaskResourceConsumption taskResourceConsumption = new TaskResourceConsumption();
+    private final TaskResourceConsumption taskResourceConsumption = new TaskResourceConsumption();
 
     /** The URL to the cAdvisor endpoint */
     private URL url;
@@ -74,7 +74,7 @@ public class CAdvisorMonitor implements Runnable {
     /** Whether to write the observed metrics to a file. */
     private boolean writeToFile;
     /** The file to write observations (in JSON format) to. Only relevant if {@link #writeToFile} is true. */
-    private File metricsFile;
+    private final File metricsFile;
 
     public CAdvisorMonitor(String cAdvisorHostAndPort, String dockerContainerName) {
         this(cAdvisorHostAndPort, dockerContainerName, null);

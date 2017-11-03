@@ -1,35 +1,35 @@
-/*******************************************************************************
- * In the Hi-WAY project we propose a novel approach of executing scientific
- * workflows processing Big Data, as found in NGS applications, on distributed
- * computational infrastructures. The Hi-WAY software stack comprises the func-
- * tional workflow language Cuneiform as well as the Hi-WAY ApplicationMaster
- * for Apache Hadoop 2.x (YARN).
- *
- * List of Contributors:
- *
- * Marc Bux (HU Berlin)
- * Jörgen Brandt (HU Berlin)
- * Hannes Schuh (HU Berlin)
- * Ulf Leser (HU Berlin)
- *
- * Jörgen Brandt is funded by the European Commission through the BiobankCloud
- * project. Marc Bux is funded by the Deutsche Forschungsgemeinschaft through
- * research training group SOAMED (GRK 1651).
- *
- * Copyright 2014 Humboldt-Universität zu Berlin
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- ******************************************************************************/
+/******************************************************************************
+ In the Hi-WAY project we propose a novel approach of executing scientific
+ workflows processing Big Data, as found in NGS applications, on distributed
+ computational infrastructures. The Hi-WAY software stack comprises the func-
+ tional workflow language Cuneiform as well as the Hi-WAY ApplicationMaster
+ for Apache Hadoop 2.x (YARN).
+
+ List of Contributors:
+
+ Marc Bux (HU Berlin)
+ Jörgen Brandt (HU Berlin)
+ Hannes Schuh (HU Berlin)
+ Ulf Leser (HU Berlin)
+
+ Jörgen Brandt is funded by the European Commission through the BiobankCloud
+ project. Marc Bux is funded by the Deutsche Forschungsgemeinschaft through
+ research training group SOAMED (GRK 1651).
+
+ Copyright 2014 Humboldt-Universität zu Berlin
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+ http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ */
 package de.huberlin.wbi.hiway.am.cuneiforme;
 
 import java.io.BufferedReader;
@@ -72,7 +72,7 @@ public class CuneiformEApplicationMaster extends WorkflowDriver {
 	@Override
 	public Collection<TaskInstance> parseWorkflow() {
 		try (BufferedReader reader = new BufferedReader(new FileReader(getWorkflowFile().getLocalPath().toString()))) {
-			WorkflowDriver.writeToStdout("Parsing Cuneiform workflow " + getWorkflowFile());
+            Logger.writeToStdout("Parsing Cuneiform workflow " + getWorkflowFile());
 			StringBuilder sb = new StringBuilder();
 			String line;
 			while ((line = reader.readLine()) != null) {
@@ -80,7 +80,7 @@ public class CuneiformEApplicationMaster extends WorkflowDriver {
 			}
 
 			String ip = getConf().get(HiWayConfiguration.HIWAY_WORKFLOW_LANGUAGE_CUNEIFORME_SERVER_IP);
-			WorkflowDriver.writeToStdout("Connecting to Cuneiform server at " + ip);
+            Logger.writeToStdout("Connecting to Cuneiform server at " + ip);
 			workflow = new RemoteWorkflow(sb.toString(), ip);
 		} catch (IOException e) {
 			e.printStackTrace(System.out);
@@ -111,16 +111,16 @@ public class CuneiformEApplicationMaster extends WorkflowDriver {
 		HaltMsg haltMsg = workflow.getHaltMsg();
 		if (haltMsg.isOk()) {
 		} else if (haltMsg.isErrorTask()) {
-			WorkflowDriver.writeToStdout("Workflow execution halted due to task failure.");
-			WorkflowDriver.writeToStdout("app line: " + haltMsg.getAppLine());
-			WorkflowDriver.writeToStdout("lam name: " + haltMsg.getLamName());
-			WorkflowDriver.writeToStdout("output:   " + haltMsg.getOutput());
-			WorkflowDriver.writeToStdout("script:   " + haltMsg.getScript());
+            Logger.writeToStdout("Workflow execution halted due to task failure.");
+            Logger.writeToStdout("app line: " + haltMsg.getAppLine());
+            Logger.writeToStdout("lam name: " + haltMsg.getLamName());
+            Logger.writeToStdout("output:   " + haltMsg.getOutput());
+            Logger.writeToStdout("script:   " + haltMsg.getScript());
 		} else if (haltMsg.isErrorWorkflow()) {
-			WorkflowDriver.writeToStdout("Workflow execution halted due to workflow failure.");
-			WorkflowDriver.writeToStdout("line:   " + haltMsg.getLine());
-			WorkflowDriver.writeToStdout("module: " + haltMsg.getModule());
-			WorkflowDriver.writeToStdout("reason: " + haltMsg.getReason());
+            Logger.writeToStdout("Workflow execution halted due to workflow failure.");
+            Logger.writeToStdout("line:   " + haltMsg.getLine());
+            Logger.writeToStdout("module: " + haltMsg.getModule());
+            Logger.writeToStdout("reason: " + haltMsg.getReason());
 		} else {
 			throw new UnsupportedOperationException();
 		}
@@ -180,8 +180,10 @@ public class CuneiformEApplicationMaster extends WorkflowDriver {
 			task.setCommand("effi -r true " + task.getId() + "_request " + task.getId() + "_reply");
 			tasks.add(task);
 
-			/* log */ writeEntryToLog(new JsonReportEntry(task.getWorkflowId(), task.getTaskId(), task.getTaskName(), task.getLanguageLabel(), task.getId(),null, JsonReportEntry.KEY_INVOC_SCRIPT, task.getCommand()));
-			/* log */ writeEntryToLog(new JsonReportEntry(task.getWorkflowId(), task.getTaskId(), task.getTaskName(), task.getLanguageLabel(), task.getId(),null, JsonReportEntry.KEY_INVOC_EXEC, request.toString()));
+			/* log */
+            logger.writeEntryToLog(new JsonReportEntry(task.getWorkflowId(), task.getTaskId(), task.getTaskName(), task.getLanguageLabel(), task.getId(), null, JsonReportEntry.KEY_INVOC_SCRIPT, task.getCommand()));
+			/* log */
+            logger.writeEntryToLog(new JsonReportEntry(task.getWorkflowId(), task.getTaskId(), task.getTaskName(), task.getLanguageLabel(), task.getId(), null, JsonReportEntry.KEY_INVOC_EXEC, request.toString()));
 		}
 
 		return tasks;
@@ -194,8 +196,8 @@ public class CuneiformEApplicationMaster extends WorkflowDriver {
 			JSONObject reply = parseEffiFile(task.getId() + "_reply");
 			workflow.addReply(reply);
 
-			writeEntryToLog(new JsonReportEntry(task.getWorkflowId(), task.getTaskId(), task.getTaskName(), task.getLanguageLabel(), task.getId(),
-			    null, JsonReportEntry.KEY_INVOC_OUTPUT, reply.toString()));
+            logger.writeEntryToLog(new JsonReportEntry(task.getWorkflowId(), task.getTaskId(), task.getTaskName(), task.getLanguageLabel(), task.getId(),
+                    null, JsonReportEntry.KEY_INVOC_OUTPUT, reply.toString()));
 			for (String fileName : RemoteWorkflow.getOutputSet(requests.get(task), reply)) {
 				files.put(fileName, new Data(fileName, containerId.toString()));
 			}

@@ -2,7 +2,6 @@ package de.huberlin.wbi.hiway.am.dax;
 
 import de.huberlin.wbi.hiway.common.Data;
 import de.huberlin.wbi.hiway.common.HiWayConfiguration;
-import org.apache.hadoop.yarn.api.records.Priority;
 
 import java.util.Arrays;
 import java.util.UUID;
@@ -34,7 +33,7 @@ public class DaxTaskInstanceTest {
 
     @org.junit.Test
     public void concatString(){
-        String str = Arrays.toString(HiWayConfiguration.HIWAY_SCHEDULER_OPTS.values());
+        String str = Arrays.toString(HiWayConfiguration.HIWAY_SCHEDULERS.values());
         System.out.println(str.substring(1,str.length()-1));
     }
 

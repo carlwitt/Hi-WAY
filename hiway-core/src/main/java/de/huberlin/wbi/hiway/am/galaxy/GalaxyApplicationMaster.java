@@ -1,35 +1,35 @@
-/*******************************************************************************
- * In the Hi-WAY project we propose a novel approach of executing scientific
- * workflows processing Big Data, as found in NGS applications, on distributed
- * computational infrastructures. The Hi-WAY software stack comprises the func-
- * tional workflow language Cuneiform as well as the Hi-WAY ApplicationMaster
- * for Apache Hadoop 2.x (YARN).
- *
- * List of Contributors:
- *
- * Marc Bux (HU Berlin)
- * Jörgen Brandt (HU Berlin)
- * Hannes Schuh (HU Berlin)
- * Ulf Leser (HU Berlin)
- *
- * Jörgen Brandt is funded by the European Commission through the BiobankCloud
- * project. Marc Bux is funded by the Deutsche Forschungsgemeinschaft through
- * research training group SOAMED (GRK 1651).
- *
- * Copyright 2014 Humboldt-Universität zu Berlin
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- ******************************************************************************/
+/******************************************************************************
+ In the Hi-WAY project we propose a novel approach of executing scientific
+ workflows processing Big Data, as found in NGS applications, on distributed
+ computational infrastructures. The Hi-WAY software stack comprises the func-
+ tional workflow language Cuneiform as well as the Hi-WAY ApplicationMaster
+ for Apache Hadoop 2.x (YARN).
+
+ List of Contributors:
+
+ Marc Bux (HU Berlin)
+ Jörgen Brandt (HU Berlin)
+ Hannes Schuh (HU Berlin)
+ Ulf Leser (HU Berlin)
+
+ Jörgen Brandt is funded by the European Commission through the BiobankCloud
+ project. Marc Bux is funded by the Deutsche Forschungsgemeinschaft through
+ research training group SOAMED (GRK 1651).
+
+ Copyright 2014 Humboldt-Universität zu Berlin
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+ http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ */
 package de.huberlin.wbi.hiway.am.galaxy;
 
 import java.io.BufferedReader;
@@ -100,7 +100,7 @@ public class GalaxyApplicationMaster extends WorkflowDriver {
 		if (!file.exists())
 			return;
 		try (BufferedReader locBr = new BufferedReader(new FileReader(file))) {
-			WorkflowDriver.writeToStdout("Processing Galaxy data table loc file " + file.getCanonicalPath());
+            Logger.writeToStdout("Processing Galaxy data table loc file " + file.getCanonicalPath());
 			String line;
 			while ((line = locBr.readLine()) != null) {
 				if (line.startsWith(galaxyDataTable.getComment_char()))
@@ -130,7 +130,7 @@ public class GalaxyApplicationMaster extends WorkflowDriver {
 		super();
 		galaxyPath = getConf().get(HiWayConfiguration.HIWAY_GALAXY_PATH);
 		if (galaxyPath == null) {
-			WorkflowDriver.writeToStdout(HiWayConfiguration.HIWAY_GALAXY_PATH + " not set in  " + HiWayConfiguration.HIWAY_SITE_XML);
+            Logger.writeToStdout(HiWayConfiguration.HIWAY_GALAXY_PATH + " not set in  " + HiWayConfiguration.HIWAY_SITE_XML);
 			throw new RuntimeException();
 		}
 		galaxyDataTables = new HashMap<>();
@@ -309,7 +309,7 @@ public class GalaxyApplicationMaster extends WorkflowDriver {
 	 * @return the Galaxy tools described in the XML file
 	 */
 	private GalaxyTool parseToolFile(File file) {
-		WorkflowDriver.writeToStdout("Parsing Galaxy tool file " + file);
+        Logger.writeToStdout("Parsing Galaxy tool file " + file);
 		try {
 			DocumentBuilder builder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
 			String path = file.getCanonicalPath();
@@ -422,7 +422,7 @@ public class GalaxyApplicationMaster extends WorkflowDriver {
 
 	@Override
 	public Collection<TaskInstance> parseWorkflow() {
-		WorkflowDriver.writeToStdout("Parsing Galaxy workflow " + getWorkflowFile());
+        Logger.writeToStdout("Parsing Galaxy workflow " + getWorkflowFile());
 		Map<Long, TaskInstance> tasks = new HashMap<>();
 		try (BufferedReader reader = new BufferedReader(new FileReader(getWorkflowFile().getLocalPath().toString()))) {
 			StringBuilder sb = new StringBuilder();
@@ -468,12 +468,12 @@ public class GalaxyApplicationMaster extends WorkflowDriver {
 						toolId = splitId[splitId.length - 2];
 					Map<String, GalaxyTool> tools = galaxyTools.get(toolId);
 					if (tools == null) {
-						WorkflowDriver.writeToStdout("Tool " + toolId + " could not be located in local Galaxy installation.");
+                        Logger.writeToStdout("Tool " + toolId + " could not be located in local Galaxy installation.");
 						throw new RuntimeException();
 					}
 					GalaxyTool tool = tools.get(toolVersion);
 					if (tool == null) {
-						WorkflowDriver.writeToStdout("Tool version " + toolVersion + " of tool " + toolId + " could not be located in local Galaxy installation.");
+                        Logger.writeToStdout("Tool version " + toolVersion + " of tool " + toolId + " could not be located in local Galaxy installation.");
 						throw new RuntimeException();
 					}
 					GalaxyTaskInstance task = new GalaxyTaskInstance(id, getRunId(), tool.getId(), tool, galaxyPath);
@@ -615,7 +615,7 @@ public class GalaxyApplicationMaster extends WorkflowDriver {
 	 */
 	private void processDataTables(File file) {
 		try {
-			WorkflowDriver.writeToStdout("Processing Galaxy data table config file " + file.getCanonicalPath());
+            Logger.writeToStdout("Processing Galaxy data table config file " + file.getCanonicalPath());
 			DocumentBuilder builder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
 			Document doc = builder.parse(file);
 			NodeList tables = doc.getElementsByTagName("table");
@@ -650,7 +650,7 @@ public class GalaxyApplicationMaster extends WorkflowDriver {
 	 */
 	private void processDataTypes(File file) {
 		try {
-			WorkflowDriver.writeToStdout("Processing Galaxy data type config file " + file.getCanonicalPath());
+            Logger.writeToStdout("Processing Galaxy data type config file " + file.getCanonicalPath());
 			DocumentBuilder builder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
 			Document doc = builder.parse(file);
 			NodeList datatypeNds = doc.getElementsByTagName("datatype");
@@ -727,7 +727,7 @@ public class GalaxyApplicationMaster extends WorkflowDriver {
 	 */
 	private void processToolLibraries(File file, String defaultPath, String dependencyDir) {
 		try {
-			WorkflowDriver.writeToStdout("Processing Galaxy tool library config file " + file.getCanonicalPath());
+            Logger.writeToStdout("Processing Galaxy tool library config file " + file.getCanonicalPath());
 			File galaxyPathFile = new File(galaxyPath);
 			File dir = new File(galaxyPathFile, defaultPath);
 			DocumentBuilder builder = DocumentBuilderFactory.newInstance().newDocumentBuilder();

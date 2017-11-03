@@ -69,15 +69,18 @@ class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 
 			// The container was released by the framework (e.g., it was a speculative copy of a finished task)
 			if (diagnostics.equals(SchedulerUtils.RELEASED_CONTAINER)) {
-				/* log */ WorkflowDriver.writeToStdout(String.format("Container was released. containerID=%s, state=%s, exitStatus=%d, diagnostics=%s", containerStatus.getContainerId(), containerStatus.getState(), containerStatus.getExitStatus(), containerStatus.getDiagnostics()));
+				/* log */
+                WorkflowDriver.Logger.writeToStdout(String.format("Container was released. containerID=%s, state=%s, exitStatus=%d, diagnostics=%s", containerStatus.getContainerId(), containerStatus.getState(), containerStatus.getExitStatus(), containerStatus.getDiagnostics()));
 			} else if (exitStatus == ExitCode.FORCE_KILLED.getExitCode()) {
-				/* log */ WorkflowDriver.writeToStdout(String.format("Container was force killed. containerID=%s, state=%s, exitStatus=%d, diagnostics=%s", containerStatus.getContainerId(), containerStatus.getState(), containerStatus.getExitStatus(), containerStatus.getDiagnostics()));
+				/* log */
+                WorkflowDriver.Logger.writeToStdout(String.format("Container was force killed. containerID=%s, state=%s, exitStatus=%d, diagnostics=%s", containerStatus.getContainerId(), containerStatus.getState(), containerStatus.getExitStatus(), containerStatus.getDiagnostics()));
 			} else if (containerIdToInvocation.containsKey(containerId)) {
 				finalizeRequestedContainer(containerStatus, exitStatus, containerId);
 			}
 			// container was aborted by the framework without it having been assigned a task (e.g., because the RM allocated more containers than requested)
 			else {
-				/* log */ WorkflowDriver.writeToStdout(String.format("Container failed., containerID=%s, state=%s, exitStatus=%d, diagnostics=%s", containerStatus.getContainerId(), containerStatus.getState(), containerStatus.getExitStatus(), containerStatus.getDiagnostics()));
+				/* log */
+                WorkflowDriver.Logger.writeToStdout(String.format("Container failed., containerID=%s, state=%s, exitStatus=%d, diagnostics=%s", containerStatus.getContainerId(), containerStatus.getState(), containerStatus.getExitStatus(), containerStatus.getDiagnostics()));
 			}
 		}
 
@@ -93,7 +96,7 @@ class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 	@Override
 	public void onContainersAllocated(List<Container> allocatedContainers) {
 
-		/* log */ if (HiWayConfiguration.verbose) for (Container container : allocatedContainers) WorkflowDriver.writeToStdout("Allocated container " + container.getId().getContainerId() + " on node " + container.getNodeId().getHost() + " with capability " + container.getResource().getVirtualCores() + ":" + container.getResource().getMemory());
+		/* log */ if (HiWayConfiguration.verbose) for (Container container : allocatedContainers) WorkflowDriver.Logger.writeToStdout("Allocated container " + container.getId().getContainerId() + " on node " + container.getNodeId().getHost() + " with capability " + container.getResource().getVirtualCores() + ":" + container.getResource().getMemory());
 
 		for (Container container : allocatedContainers) {
 
@@ -102,7 +105,7 @@ class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 			ContainerRequest request = findFirstMatchingRequest(container);
 
 			if (request != null) {
-				/* log */ if (HiWayConfiguration.verbose) WorkflowDriver.writeToStdout(String.format("Removing container request %s:%d:%d", request.getNodes(), request.getCapability().getVirtualCores(), request.getCapability().getMemory()));
+				/* log */ if (HiWayConfiguration.verbose) WorkflowDriver.Logger.writeToStdout(String.format("Removing container request %s:%d:%d", request.getNodes(), request.getCapability().getVirtualCores(), request.getCapability().getMemory()));
 
 				am.getAmRMClient().removeContainerRequest(request);
 				am.getNumAllocatedContainers().incrementAndGet();
@@ -110,7 +113,7 @@ class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 				// add to ready containers
 				containerQueue.add(container);
 			} else {
-				/* log */ if (HiWayConfiguration.verbose) WorkflowDriver.writeToStdout(String.format("Releasing container due to no matching request found. ID %d on node %s with capability %d:%d", container.getId().getContainerId(), container.getNodeId().getHost(), container.getResource().getVirtualCores(), container.getResource().getMemory()));
+				/* log */ if (HiWayConfiguration.verbose) WorkflowDriver.Logger.writeToStdout(String.format("Releasing container due to no matching request found. ID %d on node %s with capability %d:%d", container.getId().getContainerId(), container.getNodeId().getHost(), container.getResource().getVirtualCores(), container.getResource().getMemory()));
 				am.getAmRMClient().releaseAssignedContainer(container.getId());
 			}
 		}
@@ -120,14 +123,15 @@ class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 
 	@Override
 	public void onShutdownRequest() {
-		WorkflowDriver.writeToStdout("Shutdown Request.");
+        WorkflowDriver.Logger.writeToStdout("Shutdown Request.");
 		am.setDone();
 	}
 
 	@Override
 	public void onNodesUpdated(List<NodeReport> updatedNodes) {
 		for(NodeReport nr : updatedNodes){
-			/* log */ WorkflowDriver.writeToStdout(String.format("Node update, address: %s health: %s, resources: %s, containers: %s", nr.getHttpAddress(), nr.getHealthReport(), nr.getCapability(), nr.getNumContainers()));
+			/* log */
+            WorkflowDriver.Logger.writeToStdout(String.format("Node update, address: %s health: %s, resources: %s, containers: %s", nr.getHttpAddress(), nr.getHealthReport(), nr.getCapability(), nr.getNumContainers()));
 		}
 	}
 
@@ -141,7 +145,7 @@ class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 
 	@Override
 	public void onError(Throwable e) {
-		WorkflowDriver.writeToStdErr(e.getMessage());
+        WorkflowDriver.Logger.writeToStdErr(e.getMessage());
 		e.printStackTrace(System.out);
 		System.exit(-1);
 	}
@@ -225,7 +229,8 @@ class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 
 			Collection<ContainerId> toBeReleasedContainers = am.getScheduler().taskCompleted(finishedTask, containerStatus, runtime);
 			for (ContainerId toBeReleasedContainer : toBeReleasedContainers) {
-                /* log */ WorkflowDriver.writeToStdout(String.format("Killing speculative copy of task %s on container %s", finishedTask, toBeReleasedContainer));
+                /* log */
+                WorkflowDriver.Logger.writeToStdout(String.format("Killing speculative copy of task %s on container %s", finishedTask, toBeReleasedContainer));
                 am.getAmRMClient().releaseAssignedContainer(toBeReleasedContainer);
                 am.getNumKilledContainers().incrementAndGet();
             }
@@ -242,12 +247,15 @@ class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 			am.getNumFailedContainers().incrementAndGet();
 
 			if (exitStatus == ExitCode.TERMINATED.getExitCode()) {
-                /* log */ WorkflowDriver.writeToStdout(String.format("Container was terminated. containerID=%s, state=%s, exitStatus=%d, diagnostics=%s", containerStatus.getContainerId(), containerStatus.getState(), containerStatus.getExitStatus(), containerStatus.getDiagnostics()));
+                /* log */
+                WorkflowDriver.Logger.writeToStdout(String.format("Container was terminated. containerID=%s, state=%s, exitStatus=%d, diagnostics=%s", containerStatus.getContainerId(), containerStatus.getState(), containerStatus.getExitStatus(), containerStatus.getDiagnostics()));
 			} else {
-                /* log */ WorkflowDriver.writeToStdout(String.format("Container completed with failure. containerID=%s, state=%s, exitStatus=%d, diagnostics=%s", containerStatus.getContainerId(), containerStatus.getState(), containerStatus.getExitStatus(), containerStatus.getDiagnostics()));
+                /* log */
+                WorkflowDriver.Logger.writeToStdout(String.format("Container completed with failure. containerID=%s, state=%s, exitStatus=%d, diagnostics=%s", containerStatus.getContainerId(), containerStatus.getState(), containerStatus.getExitStatus(), containerStatus.getDiagnostics()));
                 Collection<ContainerId> toBeReleasedContainers = am.getScheduler().taskFailed(finishedTask, containerStatus);
                 for (ContainerId toBeReleasedContainer : toBeReleasedContainers) {
-                    /* log */ WorkflowDriver.writeToStdout(String.format("Killing speculative copy of task %s on container %s", finishedTask, toBeReleasedContainer));
+                    /* log */
+                    WorkflowDriver.Logger.writeToStdout(String.format("Killing speculative copy of task %s on container %s", finishedTask, toBeReleasedContainer));
                     am.getAmRMClient().releaseAssignedContainer(toBeReleasedContainer);
                     am.getNumKilledContainers().incrementAndGet();
                 }
@@ -292,7 +300,7 @@ class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 		//TODO find out why there are nullpointerexceptions
 		TaskResourceConsumption taskResourceConsumption;
 		if(runnable == null || runnable.getMonitor() == null){
-			WorkflowDriver.writeToStdErr("runnable " + (runnable==null?"null":runnable) + "cadvisormonitor " + (runnable==null?"no runnable":"no monitor on runnable"));
+            WorkflowDriver.Logger.writeToStdErr("runnable " + (runnable==null?"null":runnable) + "cadvisormonitor " + (runnable==null?"no runnable":"no monitor on runnable"));
 			taskResourceConsumption = new TaskResourceConsumption();
 		} else
 			taskResourceConsumption = runnable.getMonitor().getTaskResourceConsumption();
@@ -322,7 +330,7 @@ class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 
 		//TODO find out why nullptr exceptions occur
 		if (containerIdToInvocation.get(containerStatus.getContainerId()) == null)
-			WorkflowDriver.writeToStdErr("No invocation for "+containerStatus.getContainerId());
+            WorkflowDriver.Logger.writeToStdErr("No invocation for "+containerStatus.getContainerId());
 		else{
 			TaskInstance finishedTask = containerIdToInvocation.get(containerStatus.getContainerId()).task;
 			am.writeEntryToLog(new JsonReportEntry(System.currentTimeMillis(), finishedTask.getWorkflowId(), finishedTask.getTaskId(), finishedTask.getTaskName(), finishedTask.getLanguageLabel(), finishedTask.getId(), null, HiwayDBI.KEY_HIWAY_EVENT, entry));

@@ -98,34 +98,6 @@ import de.huberlin.wbi.hiway.scheduler.rr.RoundRobin;
  */
 public abstract class WorkflowDriver {
 
-	/**
-	 * The main routine.
-	 *
-	 * @param appMaster The Application Master
-	 * @param args Command line arguments passed to the ApplicationMaster.
-	 */
-	public static void launch(WorkflowDriver appMaster, String[] args) {
-		boolean result = false;
-		try {
-			WorkflowDriver.writeToStdout("Initializing ApplicationMaster");
-			boolean doRun = appMaster.init(args);
-			if (!doRun) {
-				System.exit(0);
-			}
-			result = appMaster.run();
-		} catch (Throwable t) {
-			WorkflowDriver.writeToStdout("Error running ApplicationMaster");
-			t.printStackTrace();
-			System.exit(-1);
-		}
-		if (result) {
-			WorkflowDriver.writeToStdout("Application Master completed successfully. Exiting");
-			System.exit(0);
-		} else {
-			WorkflowDriver.writeToStdout("Application Master failed. exiting");
-			System.exit(2);
-		}
-	}
 
 
 	// Hadoop interface
@@ -144,7 +116,7 @@ public abstract class WorkflowDriver {
 	// Scheduling
 	/** the workflow scheduler, as defined at workflow launch time */
 	private WorkflowScheduler scheduler;
-	private HiWayConfiguration.HIWAY_SCHEDULER_OPTS schedulerName;
+	private HiWayConfiguration.HIWAY_SCHEDULERS schedulerName;
 	private final Map<String, Integer> customMemoryMap = new HashMap<>();
 
 	// Resource management
@@ -157,23 +129,21 @@ public abstract class WorkflowDriver {
 	private int requestPriority;
 
 	// Application Master self-management
-    private HiWayConfiguration conf;
-    /** Remembers the mapping to subsequently retrieve task information when being informed about containers, e.g., in {@link NMCallbackHandler#onContainerStatusReceived(ContainerId, ContainerStatus)}*/
+	private final HiWayConfiguration conf;
+	/** Remembers the mapping to subsequently retrieve task information when being informed about containers, e.g., in {@link NMCallbackHandler#onContainerStatusReceived(ContainerId, ContainerStatus)}*/
 	final ConcurrentMap<Container, TaskInstance> taskInstanceByContainer = new ConcurrentHashMap<>();
-    /** a list of threads, one for each container launch, to make container launching non-blocking */
+	/** a list of threads, one for each container launch, to make container launching non-blocking */
     private final List<Thread> launchThreads = new ArrayList<>();
-    /** ??? */
+	/** ??? */
     protected final Map<String, Data> files = new HashMap<>();
 
 	// Execution logic
 	private Data workflowFile;
 	private Path workflowPath;
 	/** A unique id used to identify a run of a workflow. */
-	private UUID runId;
+	private final UUID runId;
 	/** the internal id assigned to this application by the YARN ResourceManager */
 	private String appId;
-	/** this application's attempt id (combination of attemptId and fail count) */
-	private ApplicationAttemptId appAttemptID;
 	/** flags denoting workflow execution has finished and been successful */
 	private volatile boolean done;
 	private volatile boolean success;
@@ -184,25 +154,9 @@ public abstract class WorkflowDriver {
 	/** Don't know what it does, but it is passed to the ContainerLaunchContext in {@link LaunchContainerRunnable} as --size */
 	private boolean determineFileSizes = false;
 
-	// Logging and reporting
+	// Reporting
 	private Path summaryPath;
-	/** the report, in which provenance information is stored */
-    private Data federatedReport;
-	private BufferedWriter statLog;
-	/** Format for logging. */
-	private static SimpleDateFormat dateFormat = new SimpleDateFormat("yy/MM/dd HH:mm:ss");
-	/** a counter for allocated containers */
-	private final AtomicInteger numAllocatedContainers = new AtomicInteger();
-	/** a counter for completed containers (complete denotes successful or failed */
-	private final AtomicInteger numCompletedContainers = new AtomicInteger();
-	/** a counter for failed containers */
-	private final AtomicInteger numFailedContainers = new AtomicInteger();
-	/** a counter for killed containers */
-	private final AtomicInteger numKilledContainers = new AtomicInteger();
-	/** a counter for requested containers */
-	private final AtomicInteger numRequestedContainers = new AtomicInteger();
-	/** a counter for the total allocated memory */
-	private final AtomicLong totalContainerMemoryMB = new AtomicLong(0);
+	protected final Logger logger = new Logger(this);
 
 	protected WorkflowDriver() {
 		conf = new HiWayConfiguration();
@@ -215,315 +169,31 @@ public abstract class WorkflowDriver {
 		runId = UUID.randomUUID();
 	}
 
-
-	/** Issue all of the scheduler's unissued resource requests. */
-	protected void askForResources() {
-
-		while (scheduler.hasNextNodeRequest()) {
-
-			// get the next unissued resource request of the scheduler
-			ContainerRequest request = scheduler.getNextNodeRequest();
-			// send the request to the YARN Resource Manager (asynchronously)
-			amRMClient.addContainerRequest(request);
-
-			/* log */ logContainerRequested(request);
-			// remember total containers and memory used so far
-			/* acc */ numRequestedContainers.incrementAndGet();
-			/* acc */ totalContainerMemoryMB.addAndGet(request.getCapability().getMemory());
-
-		}
-
-		/* log */ WorkflowDriver.writeToStdout("Current application state: requested=" + numRequestedContainers + ", totalContainerMemoryMB=" + totalContainerMemoryMB + ",completed=" + numCompletedContainers + ", failed=" + numFailedContainers + ", killed=" + numKilledContainers + ", allocated=" + numAllocatedContainers);
-		/* log */ if (HiWayConfiguration.verbose) logOutstandingContainerRequests();
-
-	}
-
-	private void logContainerRequested(ContainerRequest request) {
-		JSONObject value = new JSONObject();
-		try {
-            value.put("type", "container-requested");
-            value.put("memory", request.getCapability().getMemory());
-            value.put("vcores", request.getCapability().getVirtualCores());
-            value.put("nodes", request.getNodes());
-            value.put("priority", request.getPriority());
-        } catch (JSONException e) {
-            e.printStackTrace(System.out);
-            System.exit(-1);
-        }
-
-		if (HiWayConfiguration.verbose)
-            WorkflowDriver.writeToStdout("Requested container " + request.getNodes() + ":" + request.getCapability().getVirtualCores() + ":"
-                    + request.getCapability().getMemory());
-		writeEntryToLog(new JsonReportEntry(getRunId(), null, null, null, null, null, HiwayDBI.KEY_HIWAY_EVENT, value));
-	}
-
-	private void logOutstandingContainerRequests() {
-		// information on outstanding container request
-		StringBuilder sb = new StringBuilder("Open Container Requests: ");
-		Set<String> names = new HashSet<>();
-		names.add(ResourceRequest.ANY);
-		if (!scheduler.getRelaxLocality())
-            names = scheduler.getDbInterface().getHostNames();
-		for (String node : names) {
-            List<? extends Collection<ContainerRequest>> requestCollections = amRMClient.getMatchingRequests(
-                    Priority.newInstance(requestPriority), node, Resource.newInstance(maxMem, maxCores));
-            for (Collection<ContainerRequest> requestCollection : requestCollections) {
-                ContainerRequest first = requestCollection.iterator().next();
-                sb.append(node);
-                sb.append(":");
-                sb.append(first.getCapability().getVirtualCores());
-                sb.append(":");
-                sb.append(first.getCapability().getMemory());
-                sb.append(":");
-                sb.append(requestCollection.size());
-                sb.append(" ");
-            }
-        }
-		WorkflowDriver.writeToStdout(sb.toString());
-	}
-
 	/**
-	 * Reads the stdout and stderr from a task and pastes the result into the application log.
+	 * The main routine.
+	 *
+	 * @param appMaster The Application Master
+	 * @param args Command line arguments passed to the ApplicationMaster.
 	 */
-	void evaluateReport(TaskInstance task, ContainerId containerId) {
+	public static void launch(WorkflowDriver appMaster, String[] args) {
+		boolean result = false;
 		try {
-			Data reportFile = new Data(task.getId() + "_" + Invocation.REPORT_FILENAME, containerId.toString());
-			reportFile.stageIn();
-			Data stdoutFile = new Data(task.getId() + "_" + Invocation.STDOUT_FILENAME, containerId.toString());
-			stdoutFile.stageIn();
-			Data stderrFile = new Data(task.getId() + "_" + Invocation.STDERR_FILENAME, containerId.toString());
-			stderrFile.stageIn();
-
-			// (a) evaluate report
-			Set<JsonReportEntry> report = task.getReport();
-			try (BufferedReader reader = new BufferedReader(new FileReader(task.getId() + "_" + Invocation.REPORT_FILENAME))) {
-				String line;
-				while ((line = reader.readLine()) != null) {
-					line = line.trim();
-					if (line.isEmpty())
-						continue;
-					report.add(new JsonReportEntry(line));
-				}
-			}
-			try (BufferedReader reader = new BufferedReader(new FileReader(task.getId() + "_" + Invocation.STDOUT_FILENAME))) {
-				String line;
-				StringBuilder sb = new StringBuilder();
-				while ((line = reader.readLine()) != null) {
-					sb.append(line.replaceAll("\\\\", "\\\\\\\\").replaceAll("\"", "\\\"")).append('\n');
-				}
-				String s = sb.toString();
-				if (s.length() > 0) {
-					JsonReportEntry re = new JsonReportEntry(task.getWorkflowId(), task.getTaskId(), task.getTaskName(), task.getLanguageLabel(), task.getId(),
-							null, JsonReportEntry.KEY_INVOC_STDOUT, sb.toString());
-					report.add(re);
-				}
-			}
-			try (BufferedReader reader = new BufferedReader(new FileReader(task.getId() + "_" + Invocation.STDERR_FILENAME))) {
-				String line;
-				StringBuilder sb = new StringBuilder();
-				while ((line = reader.readLine()) != null) {
-					sb.append(line.replaceAll("\\\\", "\\\\\\\\").replaceAll("\"", "\\\"")).append('\n');
-				}
-				String s = sb.toString();
-				if (s.length() > 0) {
-					JsonReportEntry re = new JsonReportEntry(task.getWorkflowId(), task.getTaskId(), task.getTaskName(), task.getLanguageLabel(), task.getId(),
-							null, JsonReportEntry.KEY_INVOC_STDERR, sb.toString());
-					report.add(re);
-				}
-			}
-
-		} catch (Exception e) {
-			WorkflowDriver.writeToStdout("Error when attempting to evaluate report of invocation " + task.toString() + ". exiting");
-			e.printStackTrace(System.out);
+			/* log */ Logger.writeToStdout("Initializing ApplicationMaster");
+			boolean doRun = appMaster.init(args);
+			if (!doRun) System.exit(0);
+			result = appMaster.run();
+		} catch (Throwable t) {
+			/* log */ Logger.writeToStdout("Error running ApplicationMaster");
+			t.printStackTrace();
 			System.exit(-1);
 		}
-	}
-
-	protected void finish() {
-		/* log */ writeEntryToLog(new JsonReportEntry(getRunId(), null, null, null, null, null, HiwayDBI.KEY_WF_TIME, Long.toString(System.currentTimeMillis() - amRMClient.getStartTime())));
-
-		// Join all launched threads needed for when we time out and we need to release containers
-		for (Thread launchThread : launchThreads) {
-			try {
-				launchThread.join(10000);
-			} catch (InterruptedException e) {
-				WorkflowDriver.writeToStdout("Exception thrown in thread join: " + e.getMessage());
-				e.printStackTrace(System.out);
-				System.exit(-1);
-			}
-		}
-
-		// When the application completes, it should stop all running containers
-		WorkflowDriver.writeToStdout("Application completed. Stopping running containers");
-		nmClientAsync.stop();
-
-		// When the application completes, it should send a finish application signal to the RM
-		WorkflowDriver.writeToStdout("Application completed. Signalling finish to RM");
-
-		FinalApplicationStatus appStatus;
-		String appMessage = null;
-		success = true;
-
-		// WorkflowDriver.writeToStdout("Failed Containers: " + numFailedContainers.get());
-		// WorkflowDriver.writeToStdout("Completed Containers: " + numCompletedContainers.get());
-
-		int numTotalContainers = scheduler.getNumberOfTotalTasks();
-
-		// WorkflowDriver.writeToStdout("Total Scheduled Containers: " + numTotalContainers);
-
-		if (numFailedContainers.get() == 0 && numCompletedContainers.get() == numTotalContainers) {
-			appStatus = FinalApplicationStatus.SUCCEEDED;
+		if (result) {
+			/* log */ Logger.writeToStdout("Application Master completed successfully. Exiting");
+			System.exit(0);
 		} else {
-			appStatus = FinalApplicationStatus.FAILED;
-			appMessage = "Diagnostics." + ", total=" + numTotalContainers + ", completed=" + numCompletedContainers.get() + ", allocated="
-					+ numAllocatedContainers.get() + ", failed=" + numFailedContainers.get() + ", killed=" + numKilledContainers.get();
-			success = false;
+			/* log */ Logger.writeToStdout("Application Master failed. Exiting");
+			System.exit(2);
 		}
-
-		Collection<String> output = getOutput();
-		Collection<Data> outputFiles = getOutputFiles();
-		if (outputFiles.size() > 0) {
-			String outputs = outputFiles.toString();
-			writeEntryToLog(new JsonReportEntry(getRunId(), null, null, null, null, null, HiwayDBI.KEY_WF_OUTPUT, outputs.substring(1, outputs.length() - 1)));
-		}
-
-		try {
-			statLog.close();
-			federatedReport.stageOut();
-			if (summaryPath != null) {
-				String stdout = hdfsApplicationDirectory + "/AppMaster.stdout";
-				String stderr = hdfsApplicationDirectory + "/AppMaster.stderr";
-				String statlog = hdfsApplicationDirectory + "/" + appId + ".log";
-
-				try (BufferedWriter writer = new BufferedWriter(new FileWriter(summaryPath.toString()))) {
-					JSONObject obj = new JSONObject();
-					try {
-						obj.put("output", output);
-						obj.put("stdout", stdout);
-						obj.put("stderr", stderr);
-						obj.put("statlog", statlog);
-					} catch (JSONException e) {
-						e.printStackTrace(System.out);
-						System.exit(-1);
-					}
-					writer.write(obj.toString());
-				}
-				new Data("AppMaster.stdout").stageOut();
-				new Data("AppMaster.stderr").stageOut();
-				new Data(summaryPath).stageOut();
-			}
-		} catch (IOException e) {
-			WorkflowDriver.writeToStdout("Error when attempting to stage out federated output log.");
-			e.printStackTrace(System.out);
-			System.exit(-1);
-		}
-
-		try {
-			amRMClient.unregisterApplicationMaster(appStatus, appMessage, null);
-		} catch (YarnException | IOException e) {
-			WorkflowDriver.writeToStdout("Failed to unregister application");
-			e.printStackTrace(System.out);
-			System.exit(-1);
-		}
-
-		amRMClient.stop();
-	}
-
-	public ByteBuffer getAllTokens() {
-		return allTokens;
-	}
-
-	@SuppressWarnings("rawtypes")
-	public AMRMClientAsync getAmRMClient() {
-		return amRMClient;
-	}
-
-	public String getAppId() {
-		return appId;
-	}
-
-	public HiWayConfiguration getConf() {
-		return conf;
-	}
-
-	public NMCallbackHandler getContainerListener() {
-		return containerListener;
-	}
-
-	int getContainerMemory() {
-		return containerMemory;
-	}
-
-	public Map<String, Data> getFiles() {
-		return files;
-	}
-
-	public FileSystem getHdfs() {
-		return hdfs;
-	}
-
-	public List<Thread> getLaunchThreads() {
-		return launchThreads;
-	}
-
-	public NMClientAsync getNmClientAsync() {
-		return nmClientAsync;
-	}
-
-	public AtomicInteger getNumAllocatedContainers() {
-		return numAllocatedContainers;
-	}
-
-	public AtomicInteger getNumCompletedContainers() {
-		return numCompletedContainers;
-	}
-
-	public AtomicInteger getNumFailedContainers() {
-		return numFailedContainers;
-	}
-
-	public AtomicInteger getNumKilledContainers() {
-		return numKilledContainers;
-	}
-
-	protected Collection<String> getOutput() {
-		Collection<String> output = new ArrayList<>();
-		for (Data outputFile : getOutputFiles()) {
-			output.add(outputFile.getHdfsPath().toString());
-		}
-		return output;
-	}
-
-	protected Collection<Data> getOutputFiles() {
-		Collection<Data> outputFiles = new ArrayList<>();
-
-		for (Data data : files.values()) {
-			if (data.isOutput()) {
-				outputFiles.add(data);
-			}
-		}
-
-		return outputFiles;
-	}
-
-	public UUID getRunId() {
-		return runId;
-	}
-
-	public WorkflowScheduler getScheduler() {
-		return scheduler;
-	}
-
-	public Map<String, String> getShellEnv() {
-		return shellEnv;
-	}
-
-	protected Data getWorkflowFile() {
-		return workflowFile;
-	}
-
-	private String getWorkflowName() {
-		return workflowFile.getName();
 	}
 
 	public boolean init(String[] args) throws ParseException, IOException, JSONException {
@@ -535,7 +205,7 @@ public abstract class WorkflowDriver {
 		opts.addOption("u", "summary", true, "The name of the json summary file. No file is created if this parameter is not specified.");
 		opts.addOption("m", "memory", true, "The amount of memory (in MB) to be allocated per worker container. Overrides settings in hiway-site.xml.");
 		opts.addOption("c", "custom", true, "The name of an (optional) JSON file, in which custom amounts of memory can be specified per task.");
-		opts.addOption("s", "scheduler", true, "The scheduling policy that is to be employed. Valid arguments: " + Arrays.toString(HiWayConfiguration.HIWAY_SCHEDULER_OPTS.values()) + ". Overrides settings in hiway-site.xml.");
+		opts.addOption("s", "scheduler", true, "The scheduling policy that is to be employed. Valid arguments: " + Arrays.toString(HiWayConfiguration.HIWAY_SCHEDULERS.values()) + ". Overrides settings in hiway-site.xml.");
 		opts.addOption("d", "debug", false, "Provide additional logs and information for debugging");
 		opts.addOption("v", "verbose", false, "Increase verbosity of output / reporting.");
 		opts.addOption("appid", true, "Id of this Application Master.");
@@ -544,12 +214,12 @@ public abstract class WorkflowDriver {
 		CommandLine cliParser = new GnuParser().parse(opts, args);
 
 		if (args.length == 0) {
-			printUsage(opts);
+			Logger.printUsage(opts);
 			throw new IllegalArgumentException("No args specified for application master to initialize");
 		}
 
 		if (cliParser.getArgs().length == 0) {
-			printUsage(opts);
+			Logger.printUsage(opts);
 			throw new IllegalArgumentException("No workflow file specified.");
 		}
 
@@ -563,19 +233,19 @@ public abstract class WorkflowDriver {
 
 		appId = cliParser.getOptionValue("appid");
 		try {
-			statLog = new BufferedWriter(new FileWriter(appId + ".log"));
+			logger.statLog = new BufferedWriter(new FileWriter(appId + ".log"));
 		} catch (IOException e) {
 			e.printStackTrace(System.out);
 			System.exit(-1);
 		}
 
 		if (cliParser.hasOption("help")) {
-			printUsage(opts);
+			Logger.printUsage(opts);
 			return false;
 		}
 
 		if (cliParser.hasOption("debug")) {
-			dumpOutDebugInfo();
+			Logger.dumpOutDebugInfo();
 			HiWayConfiguration.debug = true;
 		}
 
@@ -614,6 +284,8 @@ public abstract class WorkflowDriver {
 
 		Map<String, String> envs = System.getenv();
 
+		/* this application's attempt id (combination of attemptId and fail count) */
+		ApplicationAttemptId appAttemptID;
 		if (!envs.containsKey(Environment.CONTAINER_ID.name())) {
 			if (cliParser.hasOption("app_attempt_id")) {
 				String appIdStr = cliParser.getOptionValue("app_attempt_id", "");
@@ -639,7 +311,7 @@ public abstract class WorkflowDriver {
 			throw new RuntimeException(Environment.NM_PORT.name() + " not set in the environment");
 		}
 
-		WorkflowDriver.writeToStdout("Application master for app" + ", appId=" + appAttemptID.getApplicationId().getId() + ", clustertimestamp="
+		Logger.writeToStdout("Application master for app" + ", appId=" + appAttemptID.getApplicationId().getId() + ", clustertimestamp="
 				+ appAttemptID.getApplicationId().getClusterTimestamp() + ", attemptId=" + appAttemptID.getAttemptId());
 
 		String shellEnvs[] = conf.getStrings(HiWayConfiguration.HIWAY_WORKER_SHELL_ENV, HiWayConfiguration.HIWAY_WORKER_SHELL_ENV_DEFAULT);
@@ -665,10 +337,10 @@ public abstract class WorkflowDriver {
 			workflowPath = new Path(workflowParam);
 		}
 
-		schedulerName = HiWayConfiguration.HIWAY_SCHEDULER_OPTS.valueOf(conf.get(HiWayConfiguration.HIWAY_SCHEDULER,
+		schedulerName = HiWayConfiguration.HIWAY_SCHEDULERS.valueOf(conf.get(HiWayConfiguration.HIWAY_SCHEDULER,
 				HiWayConfiguration.HIWAY_SCHEDULER_DEFAULT.toString()));
 		if (cliParser.hasOption("scheduler")) {
-			schedulerName = HiWayConfiguration.HIWAY_SCHEDULER_OPTS.valueOf(cliParser.getOptionValue("scheduler"));
+			schedulerName = HiWayConfiguration.HIWAY_SCHEDULERS.valueOf(cliParser.getOptionValue("scheduler"));
 		}
 
 		containerMemory = conf.getInt(HiWayConfiguration.HIWAY_WORKER_MEMORY, HiWayConfiguration.HIWAY_WORKER_MEMORY_DEFAULT);
@@ -681,23 +353,12 @@ public abstract class WorkflowDriver {
 		return true;
 	}
 
-	public boolean isDetermineFileSizes() {
-		return determineFileSizes;
-	}
-
-	protected abstract Collection<TaskInstance> parseWorkflow();
-
 	/**
-	 * Main run function for the application master
-	 *
+	 * Main run function for the application master. Does more initialization (sic!). Then calls {@link #executeWorkflow()}.
 	 * @return True if there were no errors
-	 * @throws YarnException
-	 *             YarnException
-	 * @throws IOException
-	 *             IOException
 	 */
 	private boolean run() throws IOException {
-		/* log */ WorkflowDriver.writeToStdout("Starting ApplicationMaster");
+		/* log */ Logger.writeToStdout("Starting ApplicationMaster");
 
 		Credentials credentials = UserGroupInformation.getCurrentUser().getCredentials();
 
@@ -749,11 +410,12 @@ public abstract class WorkflowDriver {
 			String appMasterTrackingUrl = "";
 			RegisterApplicationMasterResponse response = amRMClient.registerApplicationMaster(appMasterHostname, appMasterRpcPort, appMasterTrackingUrl);
 
+			// initialize scheduler
 			switch (schedulerName) {
 				case roundRobin:
 				case heft:
 					int workerMemory = conf.getInt(YarnConfiguration.NM_PMEM_MB, YarnConfiguration.DEFAULT_NM_PMEM_MB);
-					scheduler = schedulerName.equals(HiWayConfiguration.HIWAY_SCHEDULER_OPTS.roundRobin) ? new RoundRobin(getWorkflowName()) : new HEFT(getWorkflowName(), workerMemory / containerMemory);
+					scheduler = schedulerName.equals(HiWayConfiguration.HIWAY_SCHEDULERS.roundRobin) ? new RoundRobin(getWorkflowName()) : new HEFT(getWorkflowName(), workerMemory / containerMemory);
 					break;
 				case greedy:
 					scheduler = new GreedyQueue(getWorkflowName());
@@ -779,10 +441,10 @@ public abstract class WorkflowDriver {
 					scheduler = c3po;
 			}
 			scheduler.init(conf, hdfs, containerMemory, customMemoryMap, containerCores, requestPriority);
-
 			scheduler.initializeProvenanceManager();
-			writeEntryToLog(new JsonReportEntry(getRunId(), null, null, null, null, null, HiwayDBI.KEY_WF_NAME, getWorkflowName()));
-			federatedReport = new Data(appId + ".log");
+
+			/* log */ logger.writeEntryToLog(new JsonReportEntry(getRunId(), null, null, null, null, null, HiwayDBI.KEY_WF_NAME, getWorkflowName()));
+			logger.federatedReport = new Data(appId + ".log");
 
 			// parse workflow, obtain ready tasks
 			Collection<TaskInstance> readyTasks = parseWorkflow();
@@ -795,25 +457,22 @@ public abstract class WorkflowDriver {
 			// Dump out information about cluster capability as seen by the resource manager
 			maxMem = response.getMaximumResourceCapability().getMemory();
 			maxCores = response.getMaximumResourceCapability().getVirtualCores();
-			WorkflowDriver.writeToStdout("Max mem capabililty of resources in this cluster " + maxMem);
+			Logger.writeToStdout("Max mem capabililty of resources in this cluster " + maxMem);
 
 			// A resource ask cannot exceed the max.
 			if (containerMemory > maxMem) {
-				WorkflowDriver.writeToStdout("Container memory specified above max threshold of cluster." + " Using max value." + ", specified=" + containerMemory
-						+ ", max=" + maxMem);
+				/* log */ Logger.writeToStdout("Container memory specified above max threshold of cluster." + " Using max value." + ", specified=" + containerMemory + ", max=" + maxMem);
 				containerMemory = maxMem;
 			}
 			if (containerCores > maxCores) {
-				WorkflowDriver.writeToStdout("Container vcores specified above max threshold of cluster." + " Using max value." + ", specified=" + containerCores
-						+ ", max=" + maxCores);
+				/* log */ Logger.writeToStdout("Container vcores specified above max threshold of cluster." + " Using max value." + ", specified=" + containerCores + ", max=" + maxCores);
 				containerCores = maxCores;
 			}
 
-			while (!isDone()) {
-				askForResources();
-				Thread.sleep(1000);
-			}
+			// ask for resources until the workflow is done.
+			executeWorkflow();
 			finish();
+
 		} catch (Exception e) {
 			e.printStackTrace(System.out);
 			System.exit(-1);
@@ -821,48 +480,44 @@ public abstract class WorkflowDriver {
 		return success;
 	}
 
-	protected void setDetermineFileSizes() {
-		determineFileSizes = true;
+	/**
+	 * Requests resources asynchronously until the workflow is done.
+	 * Could be inlined, but it then drowned in initialization code, this way it's much clearer.
+	 * {@link #askForResources()} could maybe inlined, but the {@link de.huberlin.wbi.hiway.am.cuneiforme.CuneiformEApplicationMaster} overrides it.
+	 */
+	private void executeWorkflow() {
+		while (!isDone()) {
+            askForResources();
+			try {
+				Thread.sleep(100);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+		}
 	}
 
-	public void setDone() {
-		this.done = true;
-	}
+	/** Issue all of the scheduler's unissued resource requests. */
+	protected void askForResources() {
 
-	@SuppressWarnings("static-method")
-	public void taskFailure(TaskInstance task, ContainerId containerId) {
-		String line;
+		while (scheduler.hasNextNodeRequest()) {
 
-		try {
-			WorkflowDriver.writeToStdout("[script]");
-			try (BufferedReader reader = new BufferedReader(new StringReader(task.getCommand()))) {
-				int i = 0;
-				while ((line = reader.readLine()) != null)
-					WorkflowDriver.writeToStdout(String.format("%02d  %s", ++i, line));
-			}
+			// get the next unissued resource request of the scheduler
+			ContainerRequest request = scheduler.getNextNodeRequest();
+			// send the request to the YARN Resource Manager (asynchronously)
+			amRMClient.addContainerRequest(request);
 
-			Data stdoutFile = new Data(task.getId() + "_" + Invocation.STDOUT_FILENAME, containerId.toString());
-			stdoutFile.stageIn();
+			/* log */ logger.logContainerRequested(request);
+			// remember total containers and memory used so far
+			/* acc */
+			logger.numRequestedContainers.incrementAndGet();
+			/* acc */
+			logger.totalContainerMemoryMB.addAndGet(request.getCapability().getMemory());
 
-			WorkflowDriver.writeToStdout("[out]");
-			try (BufferedReader reader = new BufferedReader(new FileReader(stdoutFile.getLocalPath().toString()))) {
-				while ((line = reader.readLine()) != null)
-					WorkflowDriver.writeToStdout(line);
-			}
-
-			Data stderrFile = new Data(task.getId() + "_" + Invocation.STDERR_FILENAME, containerId.toString());
-			stderrFile.stageIn();
-
-			WorkflowDriver.writeToStdout("[err]");
-			try (BufferedReader reader = new BufferedReader(new FileReader(stderrFile.getLocalPath().toString()))) {
-				while ((line = reader.readLine()) != null)
-					WorkflowDriver.writeToStdout(line);
-			}
-		} catch (IOException e) {
-			e.printStackTrace(System.out);
 		}
 
-		WorkflowDriver.writeToStdout("[end]");
+		/* log */ Logger.writeToStdout("Current application state: requested=" + logger.numRequestedContainers + ", totalContainerMemoryMB=" + logger.totalContainerMemoryMB + ",completed=" + logger.getNumCompletedContainers() + ", failed=" + logger.getNumFailedContainers() + ", killed=" + logger.getNumKilledContainers() + ", allocated=" + logger.getNumAllocatedContainers());
+		/* log */ if (HiWayConfiguration.verbose) logger.logOutstandingContainerRequests();
+
 	}
 
 	/**
@@ -889,110 +544,518 @@ public abstract class WorkflowDriver {
 		}
 	}
 
+	@SuppressWarnings("static-method")
+	public void taskFailure(TaskInstance task, ContainerId containerId) {
+		String line;
+
+		try {
+			Logger.writeToStdout("[script]");
+			try (BufferedReader reader = new BufferedReader(new StringReader(task.getCommand()))) {
+				int i = 0;
+				while ((line = reader.readLine()) != null)
+					Logger.writeToStdout(String.format("%02d  %s", ++i, line));
+			}
+
+			Data stdoutFile = new Data(task.getId() + "_" + Invocation.STDOUT_FILENAME, containerId.toString());
+			stdoutFile.stageIn();
+
+			Logger.writeToStdout("[out]");
+			try (BufferedReader reader = new BufferedReader(new FileReader(stdoutFile.getLocalPath().toString()))) {
+				while ((line = reader.readLine()) != null)
+					Logger.writeToStdout(line);
+			}
+
+			Data stderrFile = new Data(task.getId() + "_" + Invocation.STDERR_FILENAME, containerId.toString());
+			stderrFile.stageIn();
+
+			Logger.writeToStdout("[err]");
+			try (BufferedReader reader = new BufferedReader(new FileReader(stderrFile.getLocalPath().toString()))) {
+				while ((line = reader.readLine()) != null)
+					Logger.writeToStdout(line);
+			}
+		} catch (IOException e) {
+			e.printStackTrace(System.out);
+		}
+
+		Logger.writeToStdout("[end]");
+	}
+
+	protected void finish() {
+		/* log */
+		logger.writeEntryToLog(new JsonReportEntry(getRunId(), null, null, null, null, null, HiwayDBI.KEY_WF_TIME, Long.toString(System.currentTimeMillis() - amRMClient.getStartTime())));
+
+		// Join all launched threads needed for when we time out and we need to release containers
+		for (Thread launchThread : launchThreads) {
+			try {
+				launchThread.join(10000);
+			} catch (InterruptedException e) {
+				Logger.writeToStdout("Exception thrown in thread join: " + e.getMessage());
+				e.printStackTrace(System.out);
+				System.exit(-1);
+			}
+		}
+
+		// When the application completes, it should stop all running containers
+		Logger.writeToStdout("Application completed. Stopping running containers");
+		nmClientAsync.stop();
+
+		// When the application completes, it should send a finish application signal to the RM
+		Logger.writeToStdout("Application completed. Signalling finish to RM");
+
+		FinalApplicationStatus appStatus;
+		String appMessage = null;
+		success = true;
+
+		// WorkflowDriver.writeToStdout("Failed Containers: " + numFailedContainers.get());
+		// WorkflowDriver.writeToStdout("Completed Containers: " + numCompletedContainers.get());
+
+		int numTotalContainers = scheduler.getNumberOfTotalTasks();
+
+		// WorkflowDriver.writeToStdout("Total Scheduled Containers: " + numTotalContainers);
+
+		if (logger.getNumFailedContainers().get() == 0 && logger.getNumCompletedContainers().get() == numTotalContainers) {
+			appStatus = FinalApplicationStatus.SUCCEEDED;
+		} else {
+			appStatus = FinalApplicationStatus.FAILED;
+			appMessage = "Diagnostics." + ", total=" + numTotalContainers + ", completed=" + logger.getNumCompletedContainers().get() + ", allocated="
+					+ logger.getNumAllocatedContainers().get() + ", failed=" + logger.getNumFailedContainers().get() + ", killed=" + logger.getNumKilledContainers().get();
+			success = false;
+		}
+
+		Collection<String> output = getOutput();
+		Collection<Data> outputFiles = getOutputFiles();
+		if (outputFiles.size() > 0) {
+			String outputs = outputFiles.toString();
+			logger.writeEntryToLog(new JsonReportEntry(getRunId(), null, null, null, null, null, HiwayDBI.KEY_WF_OUTPUT, outputs.substring(1, outputs.length() - 1)));
+		}
+
+		try {
+			logger.statLog.close();
+			logger.federatedReport.stageOut();
+			if (summaryPath != null) {
+				String stdout = hdfsApplicationDirectory + "/AppMaster.stdout";
+				String stderr = hdfsApplicationDirectory + "/AppMaster.stderr";
+				String statlog = hdfsApplicationDirectory + "/" + appId + ".log";
+
+				try (BufferedWriter writer = new BufferedWriter(new FileWriter(summaryPath.toString()))) {
+					JSONObject obj = new JSONObject();
+					try {
+						obj.put("output", output);
+						obj.put("stdout", stdout);
+						obj.put("stderr", stderr);
+						obj.put("statlog", statlog);
+					} catch (JSONException e) {
+						e.printStackTrace(System.out);
+						System.exit(-1);
+					}
+					writer.write(obj.toString());
+				}
+				new Data("AppMaster.stdout").stageOut();
+				new Data("AppMaster.stderr").stageOut();
+				new Data(summaryPath).stageOut();
+			}
+		} catch (IOException e) {
+			Logger.writeToStdout("Error when attempting to stage out federated output log.");
+			e.printStackTrace(System.out);
+			System.exit(-1);
+		}
+
+		try {
+			amRMClient.unregisterApplicationMaster(appStatus, appMessage, null);
+		} catch (YarnException | IOException e) {
+			Logger.writeToStdout("Failed to unregister application");
+			e.printStackTrace(System.out);
+			System.exit(-1);
+		}
+
+		amRMClient.stop();
+	}
+
+	/**
+	 * Reads the stdout and stderr from a task and pastes the result into the application log.
+	 */
+	void evaluateReport(TaskInstance task, ContainerId containerId) {
+		logger.evaluateReport(task, containerId);
+	}
+
+	ByteBuffer getAllTokens() {
+		return allTokens;
+	}
+
+	@SuppressWarnings("rawtypes")
+	AMRMClientAsync getAmRMClient() {
+		return amRMClient;
+	}
+
+	String getAppId() {
+		return appId;
+	}
+
+	public HiWayConfiguration getConf() {
+		return conf;
+	}
+
+	NMCallbackHandler getContainerListener() {
+		return containerListener;
+	}
+
+	int getContainerMemory() {
+		return containerMemory;
+	}
+
+	public Map<String, Data> getFiles() {
+		return files;
+	}
+
+	List<Thread> getLaunchThreads() {
+		return launchThreads;
+	}
+
+	NMClientAsync getNmClientAsync() {
+		return nmClientAsync;
+	}
+
+	AtomicInteger getNumAllocatedContainers() {
+		return logger.getNumAllocatedContainers();
+	}
+
+	AtomicInteger getNumCompletedContainers() {
+		return logger.getNumCompletedContainers();
+	}
+
+	AtomicInteger getNumFailedContainers() {
+		return logger.getNumFailedContainers();
+	}
+
+	AtomicInteger getNumKilledContainers() {
+		return logger.getNumKilledContainers();
+	}
+
+	public WorkflowScheduler getScheduler() {
+		return scheduler;
+	}
+
+	Map<String, String> getShellEnv() {
+		return shellEnv;
+	}
+
+	protected Data getWorkflowFile() {
+		return workflowFile;
+	}
+
+	boolean isDetermineFileSizes() {
+		return determineFileSizes;
+	}
+
+	private String getWorkflowName() {
+		return workflowFile.getName();
+	}
+
+	public void writeEntryToLog(JsonReportEntry entry) {
+		logger.writeEntryToLog(entry);
+	}
+
+	public UUID getRunId() {
+		return runId;
+	}
+
+	protected abstract Collection<TaskInstance> parseWorkflow();
+
 	protected boolean isDone() {
 		return done;
 	}
 
-	public void writeEntryToLog(JsonReportEntry entry) {
-		try {
-			// TODO this does not create valid JSON, because the (cuneiform) implementation produces unquoted attribute names in the JSON object.
-			// the workaround is to postprocess the log or use a tolerant parser (such as from python package dirtyjson)
-			statLog.write(entry.toString());
-			statLog.newLine();
-			statLog.flush();
-		} catch (IOException e) {
-			e.printStackTrace(System.out);
-			System.exit(-1);
+	protected Collection<String> getOutput() {
+		Collection<String> output = new ArrayList<>();
+		for (Data outputFile : getOutputFiles()) {
+			output.add(outputFile.getHdfsPath().toString());
 		}
-		scheduler.addEntryToDB(entry);
+		return output;
 	}
 
-	public static void writeToStdout(String s) {
-		System.out.println(dateFormat.format(new Date()) + " " + s);
+	protected Collection<Data> getOutputFiles() {
+		Collection<Data> outputFiles = new ArrayList<>();
+
+		for (Data data : files.values()) {
+			if (data.isOutput()) {
+				outputFiles.add(data);
+			}
+		}
+
+		return outputFiles;
 	}
-    public static void writeToStdErr(String s) {
-        System.err.println(dateFormat.format(new Date()) + " " + s);
-    }
+
+	protected void setDetermineFileSizes() {
+		determineFileSizes = true;
+	}
+
+	public void setDone() {
+		this.done = true;
+	}
 
 	/**
-	 * (Failed) attempt to create valid JSON (in contrast to {@link JsonReportEntry#toString()}, which does not quote some attribute name strings).
-	 * The problem is that there's no way to get to the actual value of the object. Access is private and both getters are broken.
-	 * java.lang.RuntimeException: Value is not a JSON object, but a string. at de.huberlin.wbi.cuneiform.core.semanticmodel.JsonReportEntry.getValueJsonObj(JsonReportEntry.java:229)
-	 * java.lang.RuntimeException: Value is not a string, but a JSON object. at de.huberlin.wbi.cuneiform.core.semanticmodel.JsonReportEntry.getValueRawString(JsonReportEntry.java:239)
-	 * @return a single JSON object, as serialized to a string
-	 * @deprecated
+	 * Fields and methods concerned with logging and reporting.
 	 */
-	public static String jsonReportEntryToString(JsonReportEntry entry){
-		StringBuffer buf;
+	public static class Logger {
+		private final WorkflowDriver workflowDriver;
+		/**
+		 * the report, in which provenance information is stored
+		 */
+		Data federatedReport;
+		BufferedWriter statLog;
+		/**
+		 * Format for logging.
+		 */
+		static final SimpleDateFormat dateFormat = new SimpleDateFormat("yy/MM/dd HH:mm:ss");
+		/**
+		 * a counter for allocated containers
+		 */
+		final AtomicInteger numAllocatedContainers = new AtomicInteger();
+		/**
+		 * a counter for completed containers (complete denotes successful or failed
+		 */
+		final AtomicInteger numCompletedContainers = new AtomicInteger();
+		/**
+		 * a counter for failed containers
+		 */
+		final AtomicInteger numFailedContainers = new AtomicInteger();
+		/**
+		 * a counter for killed containers
+		 */
+		final AtomicInteger numKilledContainers = new AtomicInteger();
+		/**
+		 * a counter for requested containers
+		 */
+		final AtomicInteger numRequestedContainers = new AtomicInteger();
+		/**
+		 * a counter for the total allocated memory
+		 */
+		final AtomicLong totalContainerMemoryMB = new AtomicLong(0);
 
-		buf = new StringBuffer();
+		public Logger(WorkflowDriver workflowDriver) {
+			this.workflowDriver = workflowDriver;
+		}
 
-		buf.append( '{' );
-		buf.append("\"").append( JsonReportEntry.ATT_TIMESTAMP ).append("\"").append( ':' ).append( entry.getTimestamp() ).append( ',' );
-		buf.append("\"").append( JsonReportEntry.ATT_RUNID ).append("\"").append( ":\"" ).append( entry.getRunId() ).append( "\"," );
+		public static void writeToStdErr(String s) {
+			System.err.println(dateFormat.format(new Date()) + " " + s);
+		}
 
-		if( entry.hasTaskId() )
-			buf.append("\"").append( JsonReportEntry.ATT_TASKID ).append("\"").append( ':' ).append( entry.getTaskId() ).append( ',' );
+		/**
+		 * (Failed) attempt to create valid JSON (in contrast to {@link JsonReportEntry#toString()}, which does not quote some attribute name strings).
+		 * The problem is that there's no way to get to the actual value of the object. Access is private and both getters are broken.
+		 * java.lang.RuntimeException: Value is not a JSON object, but a string. at de.huberlin.wbi.cuneiform.core.semanticmodel.JsonReportEntry.getValueJsonObj(JsonReportEntry.java:229)
+		 * java.lang.RuntimeException: Value is not a string, but a JSON object. at de.huberlin.wbi.cuneiform.core.semanticmodel.JsonReportEntry.getValueRawString(JsonReportEntry.java:239)
+		 *
+		 * @return a single JSON object, as serialized to a string
+		 * @deprecated
+		 */
+		public static String jsonReportEntryToString(JsonReportEntry entry) {
+			StringBuffer buf;
 
-		if( entry.hasTaskname() )
-			buf.append("\"").append( JsonReportEntry.ATT_TASKNAME ).append("\"").append( ':' ).append( "\"" ).append( entry.getTaskName() ).append( "\"," );
+			buf = new StringBuffer();
 
-		if( entry.hasLang() )
-			buf.append("\"").append( JsonReportEntry.ATT_LANG ).append("\"").append( ':' ).append( "\"" ).append( entry.getLang() ).append( "\"," );
+			buf.append('{');
+			buf.append("\"").append(JsonReportEntry.ATT_TIMESTAMP).append("\"").append(':').append(entry.getTimestamp()).append(',');
+			buf.append("\"").append(JsonReportEntry.ATT_RUNID).append("\"").append(":\"").append(entry.getRunId()).append("\",");
 
-		if( entry.hasInvocId() )
-			buf.append("\"").append( JsonReportEntry.ATT_INVOCID ).append("\"").append( ':' ).append( entry.getInvocId() ).append( ',' );
+			if (entry.hasTaskId())
+				buf.append("\"").append(JsonReportEntry.ATT_TASKID).append("\"").append(':').append(entry.getTaskId()).append(',');
 
-		if( entry.hasFile() )
-			buf.append("\"").append( JsonReportEntry.ATT_FILE ).append("\"").append( ":\"" ).append( entry.getFile() ).append( "\"," );
+			if (entry.hasTaskname())
+				buf.append("\"").append(JsonReportEntry.ATT_TASKNAME).append("\"").append(':').append("\"").append(entry.getTaskName()).append("\",");
 
-		buf.append("\"").append( JsonReportEntry.ATT_KEY ).append("\"").append( ":\"" ).append( entry.getKey() ).append( "\"," );
-		// there's no way to get to the .value field (private) both getValueJsonObj and getValueRawString are broken.
+			if (entry.hasLang())
+				buf.append("\"").append(JsonReportEntry.ATT_LANG).append("\"").append(':').append("\"").append(entry.getLang()).append("\",");
+
+			if (entry.hasInvocId())
+				buf.append("\"").append(JsonReportEntry.ATT_INVOCID).append("\"").append(':').append(entry.getInvocId()).append(',');
+
+			if (entry.hasFile())
+				buf.append("\"").append(JsonReportEntry.ATT_FILE).append("\"").append(":\"").append(entry.getFile()).append("\",");
+
+			buf.append("\"").append(JsonReportEntry.ATT_KEY).append("\"").append(":\"").append(entry.getKey()).append("\",");
+			// there's no way to get to the .value field (private) both getValueJsonObj and getValueRawString are broken.
 //		try {
 //			buf.append("\"").append( JsonReportEntry.ATT_VALUE ).append("\"").append( ':' ).append( entry.getValueJsonObj().toString() );
 //		} catch (JSONException e) {
 //			e.printStackTrace();
 //		}
-		buf.append( '}' );
+			buf.append('}');
 
-		return buf.toString();
-	}
-
-	/** If the debug flag is set, dump out contents of current working directory and the environment to stdout for debugging. */
-	private static void dumpOutDebugInfo() {
-		WorkflowDriver.writeToStdout("Dump debug output");
-		Map<String, String> envs = System.getenv();
-		for (Map.Entry<String, String> env : envs.entrySet()) {
-			WorkflowDriver.writeToStdout("System env: key=" + env.getKey() + ", val=" + env.getValue());
+			return buf.toString();
 		}
 
-		String cmd = "ls -al";
-		Runtime run = Runtime.getRuntime();
-		Process pr;
-		try {
-			pr = run.exec(cmd);
-			pr.waitFor();
+		/**
+		 * Reads the stdout and stderr from a task and pastes the result into the application log.
+		 */
+		void evaluateReport(TaskInstance task, ContainerId containerId) {
+			try {
+				Data reportFile = new Data(task.getId() + "_" + Invocation.REPORT_FILENAME, containerId.toString());
+				reportFile.stageIn();
+				Data stdoutFile = new Data(task.getId() + "_" + Invocation.STDOUT_FILENAME, containerId.toString());
+				stdoutFile.stageIn();
+				Data stderrFile = new Data(task.getId() + "_" + Invocation.STDERR_FILENAME, containerId.toString());
+				stderrFile.stageIn();
 
-			try (BufferedReader buf = new BufferedReader(new InputStreamReader(pr.getInputStream()))) {
-				String line;
-				while ((line = buf.readLine()) != null) {
-					WorkflowDriver.writeToStdout("System CWD content: " + line);
+				// (a) evaluate report
+				Set<JsonReportEntry> report = task.getReport();
+				try (BufferedReader reader = new BufferedReader(new FileReader(task.getId() + "_" + Invocation.REPORT_FILENAME))) {
+					String line;
+					while ((line = reader.readLine()) != null) {
+						line = line.trim();
+						if (line.isEmpty())
+							continue;
+						report.add(new JsonReportEntry(line));
+					}
+				}
+				try (BufferedReader reader = new BufferedReader(new FileReader(task.getId() + "_" + Invocation.STDOUT_FILENAME))) {
+					String line;
+					StringBuilder sb = new StringBuilder();
+					while ((line = reader.readLine()) != null) {
+						sb.append(line.replaceAll("\\\\", "\\\\\\\\").replaceAll("\"", "\\\"")).append('\n');
+					}
+					String s = sb.toString();
+					if (s.length() > 0) {
+						JsonReportEntry re = new JsonReportEntry(task.getWorkflowId(), task.getTaskId(), task.getTaskName(), task.getLanguageLabel(), task.getId(),
+								null, JsonReportEntry.KEY_INVOC_STDOUT, sb.toString());
+						report.add(re);
+					}
+				}
+				try (BufferedReader reader = new BufferedReader(new FileReader(task.getId() + "_" + Invocation.STDERR_FILENAME))) {
+					String line;
+					StringBuilder sb = new StringBuilder();
+					while ((line = reader.readLine()) != null) {
+						sb.append(line.replaceAll("\\\\", "\\\\\\\\").replaceAll("\"", "\\\"")).append('\n');
+					}
+					String s = sb.toString();
+					if (s.length() > 0) {
+						JsonReportEntry re = new JsonReportEntry(task.getWorkflowId(), task.getTaskId(), task.getTaskName(), task.getLanguageLabel(), task.getId(),
+								null, JsonReportEntry.KEY_INVOC_STDERR, sb.toString());
+						report.add(re);
+					}
+				}
+
+			} catch (Exception e) {
+				writeToStdout("Error when attempting to evaluate report of invocation " + task.toString() + ". exiting");
+				e.printStackTrace(System.out);
+				System.exit(-1);
+			}
+		}
+
+		public static void writeToStdout(String s) {
+			System.out.println(dateFormat.format(new Date()) + " " + s);
+		}
+
+		AtomicInteger getNumAllocatedContainers() {
+			return numAllocatedContainers;
+		}
+
+		AtomicInteger getNumCompletedContainers() {
+			return numCompletedContainers;
+		}
+
+		AtomicInteger getNumFailedContainers() {
+			return numFailedContainers;
+		}
+
+		AtomicInteger getNumKilledContainers() {
+			return numKilledContainers;
+		}
+
+		/**
+		 * Helper function to print usage.
+		 *
+		 * @param opts Parsed command line options.
+		 */
+		static void printUsage(Options opts) {
+			new HelpFormatter().printHelp("hiway [options] workflow", opts);
+		}
+
+		/**
+		 * If the debug flag is set, dump out contents of current working directory and the environment to stdout for debugging.
+		 */
+		static void dumpOutDebugInfo() {
+			writeToStdout("Dump debug output");
+			Map<String, String> envs = System.getenv();
+			for (Map.Entry<String, String> env : envs.entrySet()) {
+				writeToStdout("System env: key=" + env.getKey() + ", val=" + env.getValue());
+			}
+
+			String cmd = "ls -al";
+			Runtime run = Runtime.getRuntime();
+			Process pr;
+			try {
+				pr = run.exec(cmd);
+				pr.waitFor();
+
+				try (BufferedReader buf = new BufferedReader(new InputStreamReader(pr.getInputStream()))) {
+					String line;
+					while ((line = buf.readLine()) != null) {
+						writeToStdout("System CWD content: " + line);
+					}
+				}
+			} catch (IOException | InterruptedException e) {
+				e.printStackTrace(System.out);
+				System.exit(-1);
+			}
+		}
+
+		public void writeEntryToLog(JsonReportEntry entry) {
+			try {
+				// TODO this does not create valid JSON, because the (cuneiform) implementation produces unquoted attribute names in the JSON object.
+				// the workaround is to postprocess the log or use a tolerant parser (such as from python package dirtyjson)
+				statLog.write(entry.toString());
+				statLog.newLine();
+				statLog.flush();
+			} catch (IOException e) {
+				e.printStackTrace(System.out);
+				System.exit(-1);
+			}
+			workflowDriver.getScheduler().addEntryToDB(entry);
+		}
+
+		void logContainerRequested(ContainerRequest request) {
+			JSONObject value = new JSONObject();
+			try {
+				value.put("type", "container-requested");
+				value.put("memory", request.getCapability().getMemory());
+				value.put("vcores", request.getCapability().getVirtualCores());
+				value.put("nodes", request.getNodes());
+				value.put("priority", request.getPriority());
+			} catch (JSONException e) {
+				e.printStackTrace(System.out);
+				System.exit(-1);
+			}
+
+			if (HiWayConfiguration.verbose)
+				writeToStdout("Requested container " + request.getNodes() + ":" + request.getCapability().getVirtualCores() + ":"
+						+ request.getCapability().getMemory());
+			writeEntryToLog(new JsonReportEntry(workflowDriver.getRunId(), null, null, null, null, null, HiwayDBI.KEY_HIWAY_EVENT, value));
+		}
+
+		void logOutstandingContainerRequests() {
+			// information on outstanding container request
+			StringBuilder sb = new StringBuilder("Open Container Requests: ");
+			Set<String> names = new HashSet<>();
+			names.add(ResourceRequest.ANY);
+			if (!workflowDriver.getScheduler().getRelaxLocality())
+				names = workflowDriver.getScheduler().getDbInterface().getHostNames();
+			for (String node : names) {
+				List<? extends Collection<ContainerRequest>> requestCollections =
+						workflowDriver.getAmRMClient().getMatchingRequests(Priority.newInstance(workflowDriver.requestPriority), node, Resource.newInstance(workflowDriver.maxMem, workflowDriver.maxCores));
+				for (Collection<ContainerRequest> requestCollection : requestCollections) {
+					ContainerRequest first = requestCollection.iterator().next();
+					sb.append(node);
+					sb.append(":");
+					sb.append(first.getCapability().getVirtualCores());
+					sb.append(":");
+					sb.append(first.getCapability().getMemory());
+					sb.append(":");
+					sb.append(requestCollection.size());
+					sb.append(" ");
 				}
 			}
-		} catch (IOException | InterruptedException e) {
-			e.printStackTrace(System.out);
-			System.exit(-1);
+			writeToStdout(sb.toString());
 		}
 	}
-
-	/**
-	 * Helper function to print usage.
-	 * @param opts
-	 *            Parsed command line options.
-	 */
-	private static void printUsage(Options opts) {
-		new HelpFormatter().printHelp("hiway [options] workflow", opts);
-	}
-
-
 }

@@ -27,7 +27,7 @@ import java.util.*;
 public class ProvenanceManager {
 
     private final WorkflowScheduler workflowScheduler;
-    public Map<String, Map<Long, Estimate.RuntimeEstimate>> runtimeEstimatesPerNode = new HashMap<>();
+    public final Map<String, Map<Long, Estimate.RuntimeEstimate>> runtimeEstimatesPerNode = new HashMap<>();
     public HiwayDBI dbInterface;
     private FileSystem hdfs;
 
@@ -43,17 +43,17 @@ public class ProvenanceManager {
             case SQL:
                 String sqlUser = workflowScheduler.getConf().get(HiWayConfiguration.HIWAY_DB_SQL_USER);
                 if (sqlUser == null) {
-                    WorkflowDriver.writeToStdout(HiWayConfiguration.HIWAY_DB_SQL_USER + " not set in  " + HiWayConfiguration.HIWAY_SITE_XML);
+                    /* log */ WorkflowDriver.Logger.writeToStdout(HiWayConfiguration.HIWAY_DB_SQL_USER + " not set in  " + HiWayConfiguration.HIWAY_SITE_XML);
                     throw new RuntimeException();
                 }
                 String sqlPassword = workflowScheduler.getConf().get(HiWayConfiguration.HIWAY_DB_SQL_PASSWORD);
                 if (sqlPassword == null) {
-                    WorkflowDriver.writeToStdout(HiWayConfiguration.HIWAY_DB_SQL_PASSWORD + " not set in  " + HiWayConfiguration.HIWAY_SITE_XML);
+                    /* log */ WorkflowDriver.Logger.writeToStdout(HiWayConfiguration.HIWAY_DB_SQL_PASSWORD + " not set in  " + HiWayConfiguration.HIWAY_SITE_XML);
                     throw new RuntimeException();
                 }
                 String sqlURL = workflowScheduler.getConf().get(HiWayConfiguration.HIWAY_DB_SQL_URL);
                 if (sqlURL == null) {
-                    WorkflowDriver.writeToStdout(HiWayConfiguration.HIWAY_DB_SQL_URL + " not set in  " + HiWayConfiguration.HIWAY_SITE_XML);
+                    /* log */ WorkflowDriver.Logger.writeToStdout(HiWayConfiguration.HIWAY_DB_SQL_URL + " not set in  " + HiWayConfiguration.HIWAY_SITE_XML);
                     throw new RuntimeException();
                 }
                 dbInterface = new HiwayDB(sqlUser, sqlPassword, sqlURL);
@@ -61,32 +61,32 @@ public class ProvenanceManager {
             case NoSQL:
                 sqlUser = workflowScheduler.getConf().get(HiWayConfiguration.HIWAY_DB_SQL_USER);
                 if (sqlUser == null) {
-                    WorkflowDriver.writeToStdout(HiWayConfiguration.HIWAY_DB_SQL_USER + " not set in  " + HiWayConfiguration.HIWAY_SITE_XML);
+                    /* log */ WorkflowDriver.Logger.writeToStdout(HiWayConfiguration.HIWAY_DB_SQL_USER + " not set in  " + HiWayConfiguration.HIWAY_SITE_XML);
                     throw new RuntimeException();
                 }
                 sqlPassword = workflowScheduler.getConf().get(HiWayConfiguration.HIWAY_DB_SQL_PASSWORD);
                 if (sqlPassword == null) {
-                    WorkflowDriver.writeToStdout(HiWayConfiguration.HIWAY_DB_SQL_PASSWORD + " not set in  " + HiWayConfiguration.HIWAY_SITE_XML);
+                    /* log */ WorkflowDriver.Logger.writeToStdout(HiWayConfiguration.HIWAY_DB_SQL_PASSWORD + " not set in  " + HiWayConfiguration.HIWAY_SITE_XML);
                     throw new RuntimeException();
                 }
                 sqlURL = workflowScheduler.getConf().get(HiWayConfiguration.HIWAY_DB_SQL_URL);
                 if (sqlURL == null) {
-                    WorkflowDriver.writeToStdout(HiWayConfiguration.HIWAY_DB_SQL_URL + " not set in  " + HiWayConfiguration.HIWAY_SITE_XML);
+                    /* log */ WorkflowDriver.Logger.writeToStdout(HiWayConfiguration.HIWAY_DB_SQL_URL + " not set in  " + HiWayConfiguration.HIWAY_SITE_XML);
                     throw new RuntimeException();
                 }
                 String noSqlBucket = workflowScheduler.getConf().get(HiWayConfiguration.HIWAY_DB_NOSQL_BUCKET);
                 if (noSqlBucket == null) {
-                    WorkflowDriver.writeToStdout(HiWayConfiguration.HIWAY_DB_NOSQL_BUCKET + " not set in  " + HiWayConfiguration.HIWAY_SITE_XML);
+                    /* log */ WorkflowDriver.Logger.writeToStdout(HiWayConfiguration.HIWAY_DB_NOSQL_BUCKET + " not set in  " + HiWayConfiguration.HIWAY_SITE_XML);
                     throw new RuntimeException();
                 }
                 String noSqlPassword = workflowScheduler.getConf().get(HiWayConfiguration.HIWAY_DB_NOSQL_PASSWORD);
                 if (noSqlPassword == null) {
-                    WorkflowDriver.writeToStdout(HiWayConfiguration.HIWAY_DB_NOSQL_PASSWORD + " not set in  " + HiWayConfiguration.HIWAY_SITE_XML);
+                    /* log */ WorkflowDriver.Logger.writeToStdout(HiWayConfiguration.HIWAY_DB_NOSQL_PASSWORD + " not set in  " + HiWayConfiguration.HIWAY_SITE_XML);
                     throw new RuntimeException();
                 }
                 String noSqlURIs = workflowScheduler.getConf().get(HiWayConfiguration.HIWAY_DB_NOSQL_URLS);
                 if (noSqlURIs == null) {
-                    WorkflowDriver.writeToStdout(HiWayConfiguration.HIWAY_DB_NOSQL_URLS + " not set in  " + HiWayConfiguration.HIWAY_SITE_XML);
+                    /* log */ WorkflowDriver.Logger.writeToStdout(HiWayConfiguration.HIWAY_DB_NOSQL_URLS + " not set in  " + HiWayConfiguration.HIWAY_SITE_XML);
                     throw new RuntimeException();
                 }
                 List<URI> noSqlURIList = new ArrayList<>();
@@ -106,7 +106,7 @@ public class ProvenanceManager {
      * scan prior workflow execution for performance information that can be used to schedule the current workflow
      * TODO this is always executed on workflow startup, even when not scheduling statically or predictively, should be removed, introduces a little runtime bias.
      */
-    public void parseLogs() {
+    private void parseLogs() {
         String hdfsBaseDirectoryName = workflowScheduler.getConf().get(HiWayConfiguration.HIWAY_AM_DIRECTORY_BASE, HiWayConfiguration.HIWAY_AM_DIRECTORY_BASE_DEFAULT);
         String hdfsSandboxDirectoryName = workflowScheduler.getConf().get(HiWayConfiguration.HIWAY_AM_DIRECTORY_CACHE, HiWayConfiguration.HIWAY_AM_DIRECTORY_CACHE_DEFAULT);
         Path hdfsBaseDirectory = new Path(new Path(getHdfs().getUri()), hdfsBaseDirectoryName);
@@ -120,7 +120,7 @@ public class ProvenanceManager {
                         String srcName = src.getName();
                         if (srcName.endsWith(".log")) {
                             Path dest = new Path(appDir.getName());
-                            WorkflowDriver.writeToStdout("Parsing log " + dest.toString());
+                            WorkflowDriver.Logger.writeToStdout("Parsing log " + dest.toString());
                             getHdfs().copyToLocalFile(false, src, dest);
 
                             try (BufferedReader reader = new BufferedReader(new FileReader(new File(dest.toString())))) {
@@ -157,7 +157,7 @@ public class ProvenanceManager {
 
 
         if (HiWayConfiguration.verbose)
-            WorkflowDriver.writeToStdout("Updating Runtime Estimates.");
+            WorkflowDriver.Logger.writeToStdout("Updating Runtime Estimates.");
 
         // WorkflowDriver.writeToStdout("HiwayDB: Querying Host Names from database.");
         Collection<String> newHostIds = dbInterface.getHostNames();
@@ -219,7 +219,7 @@ public class ProvenanceManager {
         this.hdfs = hdfs;
     }
 
-    public FileSystem getHdfs() {
+    private FileSystem getHdfs() {
         return hdfs;
     }
 }

@@ -2,8 +2,6 @@ package de.huberlin.wbi.hiway.scheduler;
 
 import org.apache.hadoop.yarn.api.records.Priority;
 
-import static org.junit.Assert.*;
-
 /**
  * Created by Carl Witt on 02.11.17.
  *

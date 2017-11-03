@@ -76,7 +76,7 @@ public class DaxApplicationMaster extends WorkflowDriver {
     @Override
     public Collection<TaskInstance> parseWorkflow() {
 
-        WorkflowDriver.writeToStdout("Parsing Pegasus DAX " + getWorkflowFile());
+        Logger.writeToStdout("Parsing Pegasus DAX " + getWorkflowFile());
 
         try {
             DocumentBuilder builder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
@@ -183,7 +183,7 @@ public class DaxApplicationMaster extends WorkflowDriver {
 
 			task.setCommand(taskName + arguments.toString());
             if (HiWayConfiguration.verbose)
-                WorkflowDriver.writeToStdout("Adding getJobs " + task + ": " + task.getInputData() + " -> " + task.getOutputData());
+                Logger.writeToStdout("Adding getJobs " + task + ": " + task.getInputData() + " -> " + task.getOutputData());
         }
         return tasks;
 	}

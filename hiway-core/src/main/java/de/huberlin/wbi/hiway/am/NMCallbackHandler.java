@@ -47,7 +47,8 @@ public class NMCallbackHandler implements NMClientAsync.CallbackHandler {
 
 	@Override
 	public void onStartContainerError(ContainerId containerId, Throwable t) {
-		/* log */ WorkflowDriver.writeToStdout("Failed to start Container " + containerId);
+		/* log */
+        WorkflowDriver.Logger.writeToStdout("Failed to start Container " + containerId);
 		/* log */ t.printStackTrace();
 		containers.remove(containerId);
 		am.getNumCompletedContainers().incrementAndGet();
@@ -56,14 +57,16 @@ public class NMCallbackHandler implements NMClientAsync.CallbackHandler {
 
 	@Override
 	public void onGetContainerStatusError(ContainerId containerId, Throwable t) {
-		/* log */ WorkflowDriver.writeToStdErr(String.format("Failed to query the status of Container %s. Aborting workflow.", containerId));
+		/* log */
+        WorkflowDriver.Logger.writeToStdErr(String.format("Failed to query the status of Container %s. Aborting workflow.", containerId));
 		/* log */ t.printStackTrace();
 		System.exit(-1);
 	}
 
 	@Override
 	public void onStopContainerError(ContainerId containerId, Throwable t) {
-		/* log */ WorkflowDriver.writeToStdout("Failed to stop Container " + containerId);
+		/* log */
+        WorkflowDriver.Logger.writeToStdout("Failed to stop Container " + containerId);
 		/* log */ t.printStackTrace();
 		containers.remove(containerId);
 	}
