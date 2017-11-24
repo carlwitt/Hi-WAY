@@ -87,10 +87,10 @@ public abstract class WorkflowScheduler {
 	}
 
 	/** If the task is ready, call {@link #enqueueResourceRequest(TaskInstance)}.
-	 * This is used on initialization, but also in case of task failure (to readd the task). */
+	 * This is used on initialization, but also in case of task failure (to add the task again). */
 	protected abstract void addTask(TaskInstance task);
 
-	/** Really put the task into the queue(?) as opposed to adding only if it's ready?  */
+	/** Create a resource request for the task. */
 	public abstract void enqueueResourceRequest(TaskInstance task);
 
 	/** Call {@link #addTask(TaskInstance)} for each task in tasks. */

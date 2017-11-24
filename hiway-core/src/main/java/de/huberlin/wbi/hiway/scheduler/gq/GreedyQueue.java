@@ -67,8 +67,7 @@ public class GreedyQueue extends WorkflowScheduler {
 	public void enqueueResourceRequest(TaskInstance task) {
 		unissuedContainerRequests.add(setupContainerAskForRM(new String[0], containerMemoryMegaBytes));
 		queue.add(task);
-		/* log */
-		WorkflowDriver.Logger.writeToStdout("Added task " + task + " to queue");
+		/* log */ WorkflowDriver.Logger.writeToStdout("Added task " + task + " to queue");
 	}
 
 	@Override

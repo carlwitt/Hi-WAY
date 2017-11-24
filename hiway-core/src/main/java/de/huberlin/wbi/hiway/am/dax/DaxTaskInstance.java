@@ -51,7 +51,7 @@ public class DaxTaskInstance extends TaskInstance {
 	 * since resource usage of Docker containers is attributed to the Docker daemon, not the YARN container. */
 	private long containerMemoryLimitBytes;
 
-	DaxTaskInstance(UUID workflowId, String taskName) {
+	public DaxTaskInstance(UUID workflowId, String taskName) {
 		super(workflowId, taskName, Math.abs(taskName.hashCode() + 1));
 		fileSizesByte = new HashMap<>();
 	}

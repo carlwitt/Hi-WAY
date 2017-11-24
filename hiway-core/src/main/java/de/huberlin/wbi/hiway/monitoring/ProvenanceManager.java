@@ -155,9 +155,7 @@ public class ProvenanceManager {
         // WorkflowDriver.writeToStdout("HiwayDB: Querying Task Ids for workflow " + workflowName + " from database.");
         // WorkflowDriver.writeToStdout("HiwayDB: Retrieved Task Ids " + newTaskIds.toString() + " from database.");
 
-
-        if (HiWayConfiguration.verbose)
-            WorkflowDriver.Logger.writeToStdout("Updating Runtime Estimates.");
+        /* log */ if (HiWayConfiguration.verbose) WorkflowDriver.Logger.writeToStdout("Updating Runtime Estimates.");
 
         // WorkflowDriver.writeToStdout("HiwayDB: Querying Host Names from database.");
         Collection<String> newHostIds = dbInterface.getHostNames();

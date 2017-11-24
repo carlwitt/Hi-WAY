@@ -56,7 +56,7 @@ public class LogApplicationMaster extends WorkflowDriver {
 
 	@Override
 	public Collection<TaskInstance> parseWorkflow() {
-        Logger.writeToStdout("Parsing Hi-WAY log " + getWorkflowFile());
+        /* log */ Logger.writeToStdout("Parsing Hi-WAY log " + getWorkflowFile());
 		Map<Long, TaskInstance> tasks = new HashMap<>();
 		Map<Data, TaskInstance> taskProcucingThisFile = new HashMap<>();
 
@@ -72,47 +72,47 @@ public class LogApplicationMaster extends WorkflowDriver {
 					TaskInstance task = tasks.get(invocId);
 
 					switch (entry.getKey()) {
-					case JsonReportEntry.KEY_FILE_SIZE_STAGEIN:
-					case JsonReportEntry.KEY_FILE_SIZE_STAGEOUT:
-					case JsonReportEntry.KEY_INVOC_SCRIPT:
-					case JsonReportEntry.KEY_INVOC_EXEC:
-					case JsonReportEntry.KEY_INVOC_USER:
-					case JsonReportEntry.KEY_INVOC_OUTPUT:
-						updateAndRegisterEntry(entry, task);
-						break;
-					default:
+						case JsonReportEntry.KEY_FILE_SIZE_STAGEIN:
+						case JsonReportEntry.KEY_FILE_SIZE_STAGEOUT:
+						case JsonReportEntry.KEY_INVOC_SCRIPT:
+						case JsonReportEntry.KEY_INVOC_EXEC:
+						case JsonReportEntry.KEY_INVOC_USER:
+						case JsonReportEntry.KEY_INVOC_OUTPUT:
+							updateAndRegisterEntry(entry, task);
+							break;
+						default:
 					}
 
 					switch (entry.getKey()) {
-					case JsonReportEntry.KEY_FILE_SIZE_STAGEIN:
-						String inputName = entry.getFile();
-						if (!getFiles().containsKey(inputName)) {
-							Data data = new Data(inputName);
-							getFiles().put(inputName, data);
-						}
-						Data data = getFiles().get(inputName);
-						task.addInputData(data);
-						break;
-					case JsonReportEntry.KEY_FILE_SIZE_STAGEOUT:
-						String outputName = entry.getFile();
-						if (!getFiles().containsKey(outputName)) {
-							data = new Data(outputName);
-							getFiles().put(outputName, data);
-						}
-						data = getFiles().get(outputName);
-						task.addOutputData(data);
-						taskProcucingThisFile.put(data, task);
-						break;
-					case JsonReportEntry.KEY_INVOC_SCRIPT:
-						task.setCommand(entry.getValueRawString());
-						break;
-					case HiwayDBI.KEY_WF_OUTPUT:
-						String[] outputs = entry.getValueRawString().split(", ");
-						for (String output : outputs) {
-							getFiles().get(output).setOutput(true);
-						}
-						break;
-					default:
+						case JsonReportEntry.KEY_FILE_SIZE_STAGEIN:
+							String inputName = entry.getFile();
+							if (!getFiles().containsKey(inputName)) {
+								Data data = new Data(inputName);
+								getFiles().put(inputName, data);
+							}
+							Data data = getFiles().get(inputName);
+							task.addInputData(data);
+							break;
+						case JsonReportEntry.KEY_FILE_SIZE_STAGEOUT:
+							String outputName = entry.getFile();
+							if (!getFiles().containsKey(outputName)) {
+								data = new Data(outputName);
+								getFiles().put(outputName, data);
+							}
+							data = getFiles().get(outputName);
+							task.addOutputData(data);
+							taskProcucingThisFile.put(data, task);
+							break;
+						case JsonReportEntry.KEY_INVOC_SCRIPT:
+							task.setCommand(entry.getValueRawString());
+							break;
+						case HiwayDBI.KEY_WF_OUTPUT:
+							String[] outputs = entry.getValueRawString().split(", ");
+							for (String output : outputs) {
+								getFiles().get(output).setOutput(true);
+							}
+							break;
+						default:
 					}
 				} catch (JSONException e) {
 					e.printStackTrace(System.out);
@@ -145,7 +145,7 @@ public class LogApplicationMaster extends WorkflowDriver {
 	private void updateAndRegisterEntry(JsonReportEntry entry, TaskInstance task) {
 		entry.setRunId(getRunId());
 		entry.setInvocId(task.getId());
-        logger.writeEntryToLog(entry);
+		/* log */ logger.writeEntryToLog(entry);
 	}
 
 }

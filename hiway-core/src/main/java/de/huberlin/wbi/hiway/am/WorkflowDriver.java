@@ -171,7 +171,7 @@ public abstract class WorkflowDriver {
 
 	/**
 	 * The main routine.
-	 *
+	 * Calls {@link #init(String[])} then {@link #run()}.
 	 * @param appMaster The Application Master
 	 * @param args Command line arguments passed to the ApplicationMaster.
 	 */
@@ -196,6 +196,7 @@ public abstract class WorkflowDriver {
 		}
 	}
 
+	/** Parse command line arguments, initialize HDFS, manage environment variables. */
 	public boolean init(String[] args) throws ParseException, IOException, JSONException {
 
 		DefaultMetricsSystem.initialize("ApplicationMaster");
@@ -353,8 +354,11 @@ public abstract class WorkflowDriver {
 		return true;
 	}
 
+	protected abstract Collection<TaskInstance> parseWorkflow();
+
 	/**
-	 * Main run function for the application master. Does more initialization (sic!). Then calls {@link #executeWorkflow()}.
+	 * Main run function for the application master. Does more initialization (sic!).
+	 * Calls the abstract {@link #parseWorkflow()}, then {@link #executeWorkflow()} and finally {@link #finish()}.
 	 * @return True if there were no errors
 	 */
 	private boolean run() throws IOException {
@@ -457,7 +461,7 @@ public abstract class WorkflowDriver {
 			// Dump out information about cluster capability as seen by the resource manager
 			maxMem = response.getMaximumResourceCapability().getMemory();
 			maxCores = response.getMaximumResourceCapability().getVirtualCores();
-			Logger.writeToStdout("Max mem capabililty of resources in this cluster " + maxMem);
+			/* log */ Logger.writeToStdout("Max mem capabililty of resources in this cluster " + maxMem);
 
 			// A resource ask cannot exceed the max.
 			if (containerMemory > maxMem) {
@@ -469,8 +473,10 @@ public abstract class WorkflowDriver {
 				containerCores = maxCores;
 			}
 
+			// this is the actual work loop:
 			// ask for resources until the workflow is done.
 			executeWorkflow();
+
 			finish();
 
 		} catch (Exception e) {
@@ -508,10 +514,8 @@ public abstract class WorkflowDriver {
 
 			/* log */ logger.logContainerRequested(request);
 			// remember total containers and memory used so far
-			/* acc */
-			logger.numRequestedContainers.incrementAndGet();
-			/* acc */
-			logger.totalContainerMemoryMB.addAndGet(request.getCapability().getMemory());
+			/* acc */ logger.numRequestedContainers.incrementAndGet();
+			/* acc */ logger.totalContainerMemoryMB.addAndGet(request.getCapability().getMemory());
 
 		}
 
@@ -553,36 +557,29 @@ public abstract class WorkflowDriver {
 			try (BufferedReader reader = new BufferedReader(new StringReader(task.getCommand()))) {
 				int i = 0;
 				while ((line = reader.readLine()) != null)
-					Logger.writeToStdout(String.format("%02d  %s", ++i, line));
+					/* log */ Logger.writeToStdout(String.format("%02d  %s", ++i, line));
 			}
 
 			Data stdoutFile = new Data(task.getId() + "_" + Invocation.STDOUT_FILENAME, containerId.toString());
 			stdoutFile.stageIn();
 
-			Logger.writeToStdout("[out]");
-			try (BufferedReader reader = new BufferedReader(new FileReader(stdoutFile.getLocalPath().toString()))) {
-				while ((line = reader.readLine()) != null)
-					Logger.writeToStdout(line);
-			}
+			/* log */ Logger.writeToStdout("[out]");
+			/* log */ try (BufferedReader reader = new BufferedReader(new FileReader(stdoutFile.getLocalPath().toString()))) { while ((line = reader.readLine()) != null) Logger.writeToStdout(line); }
 
 			Data stderrFile = new Data(task.getId() + "_" + Invocation.STDERR_FILENAME, containerId.toString());
 			stderrFile.stageIn();
 
-			Logger.writeToStdout("[err]");
-			try (BufferedReader reader = new BufferedReader(new FileReader(stderrFile.getLocalPath().toString()))) {
-				while ((line = reader.readLine()) != null)
-					Logger.writeToStdout(line);
-			}
+			/* log */ Logger.writeToStdout("[err]");
+			/* log */ try (BufferedReader reader = new BufferedReader(new FileReader(stderrFile.getLocalPath().toString()))) { while ((line = reader.readLine()) != null) Logger.writeToStdout(line); }
 		} catch (IOException e) {
 			e.printStackTrace(System.out);
 		}
 
-		Logger.writeToStdout("[end]");
+		/*log */ Logger.writeToStdout("[end]");
 	}
 
 	protected void finish() {
-		/* log */
-		logger.writeEntryToLog(new JsonReportEntry(getRunId(), null, null, null, null, null, HiwayDBI.KEY_WF_TIME, Long.toString(System.currentTimeMillis() - amRMClient.getStartTime())));
+		/* log */ logger.writeEntryToLog(new JsonReportEntry(getRunId(), null, null, null, null, null, HiwayDBI.KEY_WF_TIME, Long.toString(System.currentTimeMillis() - amRMClient.getStartTime())));
 
 		// Join all launched threads needed for when we time out and we need to release containers
 		for (Thread launchThread : launchThreads) {
@@ -606,8 +603,8 @@ public abstract class WorkflowDriver {
 		String appMessage = null;
 		success = true;
 
-		// WorkflowDriver.writeToStdout("Failed Containers: " + numFailedContainers.get());
-		// WorkflowDriver.writeToStdout("Completed Containers: " + numCompletedContainers.get());
+		 WorkflowDriver.Logger.writeToStdout("Failed Containers: " + logger.numFailedContainers.get());
+		 WorkflowDriver.Logger.writeToStdout("Completed Containers: " + logger.numCompletedContainers.get());
 
 		int numTotalContainers = scheduler.getNumberOfTotalTasks();
 
@@ -682,10 +679,7 @@ public abstract class WorkflowDriver {
 		return allTokens;
 	}
 
-	@SuppressWarnings("rawtypes")
-	AMRMClientAsync getAmRMClient() {
-		return amRMClient;
-	}
+	AMRMClientAsync getAmRMClient() { return amRMClient; }
 
 	String getAppId() {
 		return appId;
@@ -759,8 +753,6 @@ public abstract class WorkflowDriver {
 		return runId;
 	}
 
-	protected abstract Collection<TaskInstance> parseWorkflow();
-
 	protected boolean isDone() {
 		return done;
 	}
@@ -798,38 +790,22 @@ public abstract class WorkflowDriver {
 	 */
 	public static class Logger {
 		private final WorkflowDriver workflowDriver;
-		/**
-		 * the report, in which provenance information is stored
-		 */
+		/** the report, in which provenance information is stored */
 		Data federatedReport;
 		BufferedWriter statLog;
-		/**
-		 * Format for logging.
-		 */
+		/** Format for logging. */
 		static final SimpleDateFormat dateFormat = new SimpleDateFormat("yy/MM/dd HH:mm:ss");
-		/**
-		 * a counter for allocated containers
-		 */
+		/** a counter for allocated containers */
 		final AtomicInteger numAllocatedContainers = new AtomicInteger();
-		/**
-		 * a counter for completed containers (complete denotes successful or failed
-		 */
+		/** a counter for completed containers (complete denotes successful or failed */
 		final AtomicInteger numCompletedContainers = new AtomicInteger();
-		/**
-		 * a counter for failed containers
-		 */
+		/** a counter for failed containers */
 		final AtomicInteger numFailedContainers = new AtomicInteger();
-		/**
-		 * a counter for killed containers
-		 */
+		/** a counter for killed containers */
 		final AtomicInteger numKilledContainers = new AtomicInteger();
-		/**
-		 * a counter for requested containers
-		 */
+		/** a counter for requested containers */
 		final AtomicInteger numRequestedContainers = new AtomicInteger();
-		/**
-		 * a counter for the total allocated memory
-		 */
+		/** a counter for the total allocated memory */
 		final AtomicLong totalContainerMemoryMB = new AtomicLong(0);
 
 		public Logger(WorkflowDriver workflowDriver) {
