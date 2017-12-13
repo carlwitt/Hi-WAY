@@ -206,8 +206,7 @@ public class Client {
 		if (amVCores <= 0) throw new IllegalArgumentException("Invalid vCores specified for application master, exiting." + " Specified vCores=" + amVCores);
 		amMemory = conf.getInt(HiWayConfiguration.HIWAY_AM_MEMORY, HiWayConfiguration.HIWAY_AM_MEMORY_DEFAULT);
 		if (amMemory <= 0) throw new IllegalArgumentException("Invalid memory specified for application master, exiting." + " Specified memory=" + amMemory);
-		schedulerName = HiWayConfiguration.HIWAY_SCHEDULERS.valueOf(conf.get(HiWayConfiguration.HIWAY_SCHEDULER,HiWayConfiguration.HIWAY_SCHEDULER_DEFAULT.toString()));
-		schedulerName = HiWayConfiguration.HIWAY_SCHEDULERS.valueOf(conf.get(HiWayConfiguration.HIWAY_SCHEDULER,HiWayConfiguration.HIWAY_SCHEDULER_DEFAULT.toString()));
+		schedulerName = HiWayConfiguration.HIWAY_SCHEDULERS.valueOf(conf.get(HiWayConfiguration.HIWAY_SCHEDULER, HiWayConfiguration.HIWAY_SCHEDULER_DEFAULT.toString()));
 		clientTimeout = conf.getInt(HiWayConfiguration.HIWAY_AM_TIMEOUT, HiWayConfiguration.HIWAY_AM_TIMEOUT_DEFAULT) * 1000;
 		for (String extension : HiWayConfiguration.HIWAY_WORKFLOW_LANGUAGE_EXTS.keySet()) {
 			if (workflowParam.endsWith(extension)) {

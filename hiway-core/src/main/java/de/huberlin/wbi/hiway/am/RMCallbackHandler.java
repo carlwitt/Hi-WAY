@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.google.common.collect.Lists;
 import de.huberlin.wbi.hiway.common.HiWayInvocation;
 import de.huberlin.wbi.hiway.monitoring.TaskResourceConsumption;
 import org.apache.hadoop.yarn.api.records.Container;
@@ -96,13 +97,31 @@ class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 	@Override
 	public void onContainersAllocated(List<Container> allocatedContainers) {
 
-		/* log */ if (HiWayConfiguration.verbose) for (Container container : allocatedContainers) WorkflowDriver.Logger.writeToStdout("Allocated container " + container.getId().getContainerId() + " on node " + container.getNodeId().getHost() + " with capability " + container.getResource().getVirtualCores() + ":" + container.getResource().getMemory());
+		/* log */ if (HiWayConfiguration.verbose) for (Container container : allocatedContainers) WorkflowDriver.Logger.writeToStdout(String.format("Allocated container %d on node %s with capability %d:%d", container.getId().getContainerId(), container.getNodeId().getHost(), container.getResource().getVirtualCores(), container.getResource().getMemory()));
+
 
 		for (Container container : allocatedContainers) {
 
 			/* log */ logHiwayEventContainerAllocated(container);
 
-			ContainerRequest request = findFirstMatchingRequest(container);
+			/*
+			 * Matches one of the AmRMClients requests to the given container.
+			 * The request needs to have capabilities and priority equal to the given container.
+			 * If the scheduler has getRelaxLocality on, the given container may be located on any node, otherwise, it needs to be on the node specified in the request.
+			 * @param container A container as received from the YARN Resource Manager.
+			 * @return One of the requests in the AmRMClient.
+			 */
+			ContainerRequest request = null;
+			// get requests for all nodes or grouped by node
+			List<? extends Collection<ContainerRequest>> requestCollections = am.getScheduler().getRelaxLocality() ?
+					am.getAmRMClient().getMatchingRequests(container.getPriority(), ResourceRequest.ANY, container.getResource()) :
+					am.getAmRMClient().getMatchingRequests(container.getPriority(), container.getNodeId().getHost(), container.getResource());
+
+			for (Collection<ContainerRequest> requestCollection : requestCollections) {
+				request = requestCollection.iterator().next();
+				// compare capabilities for exact match
+					break;
+			}
 
 			if (request != null) {
 				/* log */ if (HiWayConfiguration.verbose) WorkflowDriver.Logger.writeToStdout(String.format("Removing container request %s:%d:%d", request.getNodes(), request.getCapability().getVirtualCores(), request.getCapability().getMemory()));
@@ -148,29 +167,6 @@ class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
         WorkflowDriver.Logger.writeToStdErr(e.getMessage());
 		e.printStackTrace(System.out);
 		System.exit(-1);
-	}
-
-	/**
-	 * Matches one of the AmRMClients requests to the given container.
-	 * The request needs to have capabilities and priority equal to the given container.
-	 * If the scheduler has getRelaxLocality on, the given container may be located on any node, otherwise, it needs to be on the node specified in the request.
-	 * @param container A container as received from the YARN Resource Manager.
-	 * @return One of the requests in the AmRMClient.
-	 */
-	private ContainerRequest findFirstMatchingRequest(Container container) {
-		List<? extends Collection<ContainerRequest>> requestCollections =
-				am.getScheduler().getRelaxLocality() ?
-						am.getAmRMClient().getMatchingRequests(container.getPriority(), ResourceRequest.ANY, container.getResource()) :
-						am.getAmRMClient().getMatchingRequests(container.getPriority(), container.getNodeId().getHost(), container.getResource());
-
-		// either go over all
-		for (Collection<ContainerRequest> requestCollection : requestCollections) {
-			ContainerRequest request = requestCollection.iterator().next();
-			// compare capabilities for exact match
-			if (request.getCapability().equals(container.getResource()))
-				return request;
-		}
-		return null;
 	}
 
 	/** Offers free containers to the scheduler to receive tasks to run in the container.

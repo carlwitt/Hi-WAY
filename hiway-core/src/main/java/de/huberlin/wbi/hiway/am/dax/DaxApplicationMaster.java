@@ -130,7 +130,7 @@ public class DaxApplicationMaster extends WorkflowDriver {
     }
 
     /**
-     * Helper method for parsing the workflow from dax file format.
+     * Helper method for {@link #parseWorkflow()} from dax file format.
      */
 	private Map<Object, TaskInstance> getJobs(NodeList jobNds) throws JSONException {
 		Map<Object, TaskInstance> tasks = new HashMap<>();
@@ -189,7 +189,7 @@ public class DaxApplicationMaster extends WorkflowDriver {
 	}
 
     /**
-     * Helper method for parsing the workflow from dax file format.
+     * Helper method for {@link #parseWorkflow()} from dax file format.
      */
     private void edge(DaxTaskInstance task, NodeList usesNds) throws JSONException {
 		for (int j = 0; j < usesNds.getLength(); j++) {

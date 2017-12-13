@@ -33,7 +33,7 @@ import de.huberlin.wbi.hiway.common.TaskInstance;
  * The main point here is to construct the {@link ContainerLaunchContext} that is passed to the Node Manager to start the container. <br/>
  * Every instance of this class is passed the reference to the global {@link NMCallbackHandler} to add the container to the watch list.
  */
-class LaunchContainerRunnable implements Runnable {
+public class LaunchContainerRunnable implements Runnable {
 
 	/** The Application Master */
 	private final WorkflowDriver am;
@@ -53,7 +53,7 @@ class LaunchContainerRunnable implements Runnable {
 	 * @param task The task to be launched
 	 * @param am The Application Master
 	 */
-	LaunchContainerRunnable(Container lcontainer, NMCallbackHandler containerListener, TaskInstance task, WorkflowDriver am) {
+	public LaunchContainerRunnable(Container lcontainer, NMCallbackHandler containerListener, TaskInstance task, WorkflowDriver am) {
 		this.container = lcontainer;
 		this.containerListener = containerListener;
 		this.task = task;

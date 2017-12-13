@@ -48,7 +48,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 
+import de.huberlin.wbi.hiway.am.benchmark.PerfectDaxGreedyQueue;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.GnuParser;
 import org.apache.commons.cli.HelpFormatter;
@@ -66,7 +68,12 @@ import org.apache.hadoop.yarn.api.ApplicationConstants;
 import org.apache.hadoop.yarn.api.ApplicationConstants.Environment;
 import org.apache.hadoop.yarn.api.protocolrecords.RegisterApplicationMasterResponse;
 import org.apache.hadoop.yarn.api.records.*;
+import org.apache.hadoop.yarn.api.records.timeline.TimelineDomain;
+import org.apache.hadoop.yarn.api.records.timeline.TimelineEntity;
+import org.apache.hadoop.yarn.api.records.timeline.TimelineEvent;
+import org.apache.hadoop.yarn.api.records.timeline.TimelinePutResponse;
 import org.apache.hadoop.yarn.client.api.AMRMClient.ContainerRequest;
+import org.apache.hadoop.yarn.client.api.TimelineClient;
 import org.apache.hadoop.yarn.client.api.async.AMRMClientAsync;
 import org.apache.hadoop.yarn.client.api.async.NMClientAsync;
 import org.apache.hadoop.yarn.client.api.async.impl.NMClientAsyncImpl;
@@ -98,11 +105,9 @@ import de.huberlin.wbi.hiway.scheduler.rr.RoundRobin;
  */
 public abstract class WorkflowDriver {
 
-
-
 	// Hadoop interface
 	/** a handle to interact with the YARN ResourceManager */
-	private AMRMClientAsync<ContainerRequest> amRMClient;
+	protected AMRMClientAsync<ContainerRequest> amRMClient;
 	/** a listener for processing the responses from the NodeManagers */
 	private NMCallbackHandler containerListener;
 	/** a handle to communicate with the YARN NodeManagers */
@@ -111,12 +116,12 @@ public abstract class WorkflowDriver {
 	private ByteBuffer allTokens;
 	/** a handle to the hdfs */
 	private FileSystem hdfs;
-	private Path hdfsApplicationDirectory;
+	protected Path hdfsApplicationDirectory;
 
 	// Scheduling
 	/** the workflow scheduler, as defined at workflow launch time */
-	private WorkflowScheduler scheduler;
-	private HiWayConfiguration.HIWAY_SCHEDULERS schedulerName;
+	protected WorkflowScheduler scheduler;
+	private HiWayConfiguration.HIWAY_SCHEDULERS schedulerEnumValue;
 	private final Map<String, Integer> customMemoryMap = new HashMap<>();
 
 	// Resource management
@@ -157,6 +162,8 @@ public abstract class WorkflowDriver {
 	// Reporting
 	private Path summaryPath;
 	protected final Logger logger = new Logger(this);
+	/** This is used to publish workflow progress information during execution. */
+	private TimelineClient timelineClient;
 
 	protected WorkflowDriver() {
 		conf = new HiWayConfiguration();
@@ -338,10 +345,10 @@ public abstract class WorkflowDriver {
 			workflowPath = new Path(workflowParam);
 		}
 
-		schedulerName = HiWayConfiguration.HIWAY_SCHEDULERS.valueOf(conf.get(HiWayConfiguration.HIWAY_SCHEDULER,
+		schedulerEnumValue = HiWayConfiguration.HIWAY_SCHEDULERS.valueOf(conf.get(HiWayConfiguration.HIWAY_SCHEDULER,
 				HiWayConfiguration.HIWAY_SCHEDULER_DEFAULT.toString()));
 		if (cliParser.hasOption("scheduler")) {
-			schedulerName = HiWayConfiguration.HIWAY_SCHEDULERS.valueOf(cliParser.getOptionValue("scheduler"));
+			schedulerEnumValue = HiWayConfiguration.HIWAY_SCHEDULERS.valueOf(cliParser.getOptionValue("scheduler"));
 		}
 
 		containerMemory = conf.getInt(HiWayConfiguration.HIWAY_WORKER_MEMORY, HiWayConfiguration.HIWAY_WORKER_MEMORY_DEFAULT);
@@ -351,9 +358,23 @@ public abstract class WorkflowDriver {
 
 		containerCores = conf.getInt(HiWayConfiguration.HIWAY_WORKER_VCORES, HiWayConfiguration.HIWAY_WORKER_VCORES_DEFAULT);
 		requestPriority = conf.getInt(HiWayConfiguration.HIWAY_WORKER_PRIORITY, HiWayConfiguration.HIWAY_WORKER_PRIORITY_DEFAULT);
+
+		// Create and start the Timeline timelineClient
+		if(conf.getBoolean("yarn.timeline-service.enabled",false)){
+			timelineClient = TimelineClient.createTimelineClient();
+			timelineClient.init(conf);
+			timelineClient.start();
+			Logger.writeToStdout("Started TimeLineClient.");
+		} else{
+			Logger.writeToStdErr("TimeLineClient disabled.");
+		}
 		return true;
 	}
 
+	/**
+	 * Uses the {@link #getWorkflowFile()} method to parse the workflow. The resulting graph structure/functional language expression is encoded in the TaskInstance.
+ 	 * @return ready tasks of the workflow (vertices in the dag with an in-degree of zero, or initially reducible terms in cuneiform)
+	 */
 	protected abstract Collection<TaskInstance> parseWorkflow();
 
 	/**
@@ -415,11 +436,11 @@ public abstract class WorkflowDriver {
 			RegisterApplicationMasterResponse response = amRMClient.registerApplicationMaster(appMasterHostname, appMasterRpcPort, appMasterTrackingUrl);
 
 			// initialize scheduler
-			switch (schedulerName) {
+			switch (schedulerEnumValue) {
 				case roundRobin:
 				case heft:
 					int workerMemory = conf.getInt(YarnConfiguration.NM_PMEM_MB, YarnConfiguration.DEFAULT_NM_PMEM_MB);
-					scheduler = schedulerName.equals(HiWayConfiguration.HIWAY_SCHEDULERS.roundRobin) ? new RoundRobin(getWorkflowName()) : new HEFT(getWorkflowName(), workerMemory / containerMemory);
+					scheduler = schedulerEnumValue.equals(HiWayConfiguration.HIWAY_SCHEDULERS.roundRobin) ? new RoundRobin(getWorkflowName()) : new HEFT(getWorkflowName(), workerMemory / containerMemory);
 					break;
 				case greedy:
 					scheduler = new GreedyQueue(getWorkflowName());
@@ -427,9 +448,12 @@ public abstract class WorkflowDriver {
 				case memoryAware:
 					scheduler = new MemoryAware(getWorkflowName(), amRMClient);
 					break;
+				case perfectDaxGQ:
+					scheduler = new PerfectDaxGreedyQueue(getWorkflowName());
+					break;
 				default:
 					C3PO c3po = new C3PO(getWorkflowName());
-					switch (schedulerName) {
+					switch (schedulerEnumValue) {
 						case dataAware:
 							c3po.setConservatismWeight(0.01d);
 							c3po.setnClones(0);
@@ -491,7 +515,7 @@ public abstract class WorkflowDriver {
 	 * Could be inlined, but it then drowned in initialization code, this way it's much clearer.
 	 * {@link #askForResources()} could maybe inlined, but the {@link de.huberlin.wbi.hiway.am.cuneiforme.CuneiformEApplicationMaster} overrides it.
 	 */
-	private void executeWorkflow() {
+	protected void executeWorkflow() {
 		while (!isDone()) {
             askForResources();
 			try {
@@ -519,9 +543,47 @@ public abstract class WorkflowDriver {
 
 		}
 
-		/* log */ Logger.writeToStdout("Current application state: requested=" + logger.numRequestedContainers + ", totalContainerMemoryMB=" + logger.totalContainerMemoryMB + ",completed=" + logger.getNumCompletedContainers() + ", failed=" + logger.getNumFailedContainers() + ", killed=" + logger.getNumKilledContainers() + ", allocated=" + logger.getNumAllocatedContainers());
+		/* log */ timelineWrite(getWorkflowName(), "Current application state: requested=" + logger.numRequestedContainers + ", totalContainerMemoryMB=" + logger.totalContainerMemoryMB + ",completed=" + logger.getNumCompletedContainers() + ", failed=" + logger.getNumFailedContainers() + ", killed=" + logger.getNumKilledContainers() + ", allocated=" + logger.getNumAllocatedContainers());
 		/* log */ if (HiWayConfiguration.verbose) logger.logOutstandingContainerRequests();
 
+	}
+
+	private void timelineWrite(String entity, String message){
+
+		if (timelineClient == null) return;
+
+		try {
+			TimelineDomain myDomain = new TimelineDomain();
+			myDomain.setId("hiwayWorkflow");
+
+			timelineClient.putDomain(myDomain);
+
+			TimelineEntity myEntity = new TimelineEntity();
+			myEntity.setDomainId(myDomain.getId());
+			myEntity.setEntityType("APPLICATION");
+			myEntity.setEntityId(entity);
+
+			TimelinePutResponse response = timelineClient.putEntities(myEntity);
+			if(response.getErrors().size()>0) Logger.writeToStdErr(String.format("Errors in timelineWrite for putting entity %s: %s", entity, response.getErrors().stream().map(Object::toString).collect(Collectors.joining("; "))));
+
+			TimelineEvent event = new TimelineEvent();
+			event.setEventType("LOG");
+			event.setTimestamp(System.currentTimeMillis());
+			event.addEventInfo("MESSAGE", message);
+
+			myEntity.addEvent(event);
+			response = timelineClient.putEntities(myEntity);
+			if(response.getErrors().size()>0) Logger.writeToStdErr(String.format("Errors in timelineWrite for putting event %s: %s", message, response.getErrors().stream().map(Object::toString).collect(Collectors.joining("; "))));
+
+		} catch (IOException e) {
+			// Handle the exception
+		} catch (RuntimeException e) {
+			// In Hadoop 2.6, if attempts submit information to the Timeline Server fail more than the retry limit,
+			// a RuntimeException will be raised. This may change in future releases, being
+			// replaced with a IOException that is (or wraps) that which triggered retry failures.
+		} catch (YarnException e) {
+			// Handle the exception
+		}
 	}
 
 	/**
@@ -666,6 +728,9 @@ public abstract class WorkflowDriver {
 		}
 
 		amRMClient.stop();
+
+		if(timelineClient != null) timelineClient.stop();
+
 	}
 
 	/**
@@ -689,7 +754,7 @@ public abstract class WorkflowDriver {
 		return conf;
 	}
 
-	NMCallbackHandler getContainerListener() {
+	protected NMCallbackHandler getContainerListener() {
 		return containerListener;
 	}
 
@@ -701,7 +766,7 @@ public abstract class WorkflowDriver {
 		return files;
 	}
 
-	List<Thread> getLaunchThreads() {
+	protected List<Thread> getLaunchThreads() {
 		return launchThreads;
 	}
 
@@ -741,7 +806,7 @@ public abstract class WorkflowDriver {
 		return determineFileSizes;
 	}
 
-	private String getWorkflowName() {
+	protected String getWorkflowName() {
 		return workflowFile.getName();
 	}
 
@@ -777,6 +842,16 @@ public abstract class WorkflowDriver {
 		return outputFiles;
 	}
 
+	/** Asynchronously starts a container by creating the runnable for the container and starting it in a separate thread.
+	 * @return the runnable to perform logging if necessary. */
+	public LaunchContainerRunnable launchContainer(Container allocatedContainer, TaskInstance task) {
+		LaunchContainerRunnable runnableLaunchContainer = new LaunchContainerRunnable(allocatedContainer, getContainerListener(), task, this);
+		Thread launchThread = new Thread(runnableLaunchContainer);
+		getLaunchThreads().add(launchThread);
+		launchThread.start();
+		return runnableLaunchContainer;
+	}
+
 	protected void setDetermineFileSizes() {
 		determineFileSizes = true;
 	}
@@ -804,9 +879,9 @@ public abstract class WorkflowDriver {
 		/** a counter for killed containers */
 		final AtomicInteger numKilledContainers = new AtomicInteger();
 		/** a counter for requested containers */
-		final AtomicInteger numRequestedContainers = new AtomicInteger();
+		public final AtomicInteger numRequestedContainers = new AtomicInteger();
 		/** a counter for the total allocated memory */
-		final AtomicLong totalContainerMemoryMB = new AtomicLong(0);
+		public final AtomicLong totalContainerMemoryMB = new AtomicLong(0);
 
 		public Logger(WorkflowDriver workflowDriver) {
 			this.workflowDriver = workflowDriver;
@@ -922,19 +997,19 @@ public abstract class WorkflowDriver {
 			System.out.println(dateFormat.format(new Date()) + " " + s);
 		}
 
-		AtomicInteger getNumAllocatedContainers() {
+		public AtomicInteger getNumAllocatedContainers() {
 			return numAllocatedContainers;
 		}
 
-		AtomicInteger getNumCompletedContainers() {
+		public AtomicInteger getNumCompletedContainers() {
 			return numCompletedContainers;
 		}
 
-		AtomicInteger getNumFailedContainers() {
+		public AtomicInteger getNumFailedContainers() {
 			return numFailedContainers;
 		}
 
-		AtomicInteger getNumKilledContainers() {
+		public AtomicInteger getNumKilledContainers() {
 			return numKilledContainers;
 		}
 
@@ -990,7 +1065,7 @@ public abstract class WorkflowDriver {
 			workflowDriver.getScheduler().addEntryToDB(entry);
 		}
 
-		void logContainerRequested(ContainerRequest request) {
+		public void logContainerRequested(ContainerRequest request) {
 			JSONObject value = new JSONObject();
 			try {
 				value.put("type", "container-requested");
@@ -1009,7 +1084,7 @@ public abstract class WorkflowDriver {
 			writeEntryToLog(new JsonReportEntry(workflowDriver.getRunId(), null, null, null, null, null, HiwayDBI.KEY_HIWAY_EVENT, value));
 		}
 
-		void logOutstandingContainerRequests() {
+		public void logOutstandingContainerRequests() {
 			// information on outstanding container request
 			StringBuilder sb = new StringBuilder("Open Container Requests: ");
 			Set<String> names = new HashSet<>();
@@ -1031,7 +1106,7 @@ public abstract class WorkflowDriver {
 					sb.append(" ");
 				}
 			}
-			writeToStdout(sb.toString());
+			workflowDriver.timelineWrite(workflowDriver.getWorkflowName(),sb.toString());
 		}
 	}
 }

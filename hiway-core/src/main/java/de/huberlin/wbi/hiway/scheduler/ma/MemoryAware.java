@@ -117,7 +117,7 @@ public class MemoryAware extends WorkflowScheduler {
 		Queue<TaskInstance> queue = queuePerMem.get(memory);
 		TaskInstance task = queue.remove();
 
-        WorkflowDriver.Logger.writeToStdout("Assigned task " + task + " to container " + container.getId() + "@" + container.getNodeId().getHost() + ":"
+        WorkflowDriver.Logger.writeToStdout("MA Assigned task " + task + " to container " + container.getId() + "@" + container.getNodeId().getHost() + ":"
 				+ container.getResource().getVirtualCores() + ":" + container.getResource().getMemory());
 
 		task.incTries();

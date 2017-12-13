@@ -103,7 +103,7 @@ public class ProvenanceManager {
     }
 
     /**
-     * scan prior workflow execution for performance information that can be used to schedule the current workflow
+     * scan prior workflow execution for performance information that can be used to scheduleTaskstoContainers the current workflow
      * TODO this is always executed on workflow startup, even when not scheduling statically or predictively, should be removed, introduces a little runtime bias.
      */
     private void parseLogs() {

@@ -77,7 +77,7 @@ public class GreedyQueue extends WorkflowScheduler {
 		TaskInstance task = queue.remove();
 
 		/* log */
-		WorkflowDriver.Logger.writeToStdout("Assigned task " + task + " to container " + container.getId() + "@" + container.getNodeId().getHost());
+		WorkflowDriver.Logger.writeToStdout("GQ Assigned task " + task + " to container " + container.getId() + "@" + container.getNodeId().getHost());
 		task.incTries();
 		return task;
 	}

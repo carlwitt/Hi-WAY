@@ -19,20 +19,8 @@
 	</licenses>
 	<developers>
 		<developer>
-			<name>Jörgen Brandt</name>
-			<email>brandjoe@informatik.hu-berlin.de</email>
-			<organization>Humboldt-Universität zu Berlin</organization>
-			<organizationUrl>https://www.hu-berlin.de/</organizationUrl>
-		</developer>
-		<developer>
-			<name>Marc Bux</name>
-			<email>buxmarcn@informatik.hu-berlin.de</email>
-			<organization>Humboldt-Universität zu Berlin</organization>
-			<organizationUrl>https://www.hu-berlin.de/</organizationUrl>
-		</developer>
-		<developer>
-			<name>Hannes Schuh</name>
-			<email>schuh@informatik.hu-berlin.de</email>
+			<name>Carl Witt</name>
+			<email>wittcarl@informatik.hu-berlin.de</email>
 			<organization>Humboldt-Universität zu Berlin</organization>
 			<organizationUrl>https://www.hu-berlin.de/</organizationUrl>
 		</developer>

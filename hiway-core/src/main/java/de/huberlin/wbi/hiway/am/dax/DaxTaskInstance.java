@@ -134,7 +134,7 @@ public class DaxTaskInstance extends TaskInstance {
 		return super.getInputData();
 	}
 
-	void setRuntimeSeconds(double runtimeSeconds) {
+	public void setRuntimeSeconds(double runtimeSeconds) {
 		this.runtimeSeconds = runtimeSeconds;
 	}
 
@@ -146,4 +146,11 @@ public class DaxTaskInstance extends TaskInstance {
 		containerMemoryLimitBytes = bytes;
 	}
 
+	public long getContainerMemoryLimitBytes() {
+		return containerMemoryLimitBytes;
+	}
+
+	public long getPeakMemoryBytes() {
+		return peakMemoryBytes;
+	}
 }

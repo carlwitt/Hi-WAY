@@ -45,7 +45,7 @@ import de.huberlin.wbi.hiway.common.HiWayConfiguration;
 import de.huberlin.wbi.hiway.common.TaskInstance;
 
 /**
- * An abstract implementation of a static workflow scheduler (i.e., a scheduler that build a static schedule of which task to assign to which resource prior to
+ * An abstract implementation of a static workflow scheduler (i.e., a scheduler that build a static scheduleTaskstoContainers of which task to assign to which resource prior to
  * workflow execution).
  * 
  * @author Marc Bux
@@ -99,7 +99,7 @@ public abstract class StaticScheduler extends WorkflowScheduler {
 
 		TaskInstance task = readyTasksByNode.get(node).remove();
 
-		WorkflowDriver.Logger.writeToStdout("Assigned task " + task + " to container " + container.getId() + "@" + node);
+		WorkflowDriver.Logger.writeToStdout("SS Assigned task " + task + " to container " + container.getId() + "@" + node);
 		task.incTries();
 
 		return task;

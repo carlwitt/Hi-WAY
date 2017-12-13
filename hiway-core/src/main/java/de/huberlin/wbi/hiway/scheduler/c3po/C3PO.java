@@ -379,7 +379,7 @@ public class C3PO extends WorkflowScheduler {
                     WorkflowDriver.Logger.writeToStdout("Assigned speculative copy of task " + task + " to container " + container.getId() + "@"
 							+ container.getNodeId().getHost());
 				} else {
-                    WorkflowDriver.Logger.writeToStdout("Assigned task " + task + " to container " + container.getId() + "@" + container.getNodeId().getHost());
+                    WorkflowDriver.Logger.writeToStdout("C3PO Assigned task " + task + " to container " + container.getId() + "@" + container.getNodeId().getHost());
 				}
 
 				task.incTries();
