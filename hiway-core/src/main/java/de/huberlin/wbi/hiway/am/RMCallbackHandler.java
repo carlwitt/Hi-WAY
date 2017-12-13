@@ -120,6 +120,8 @@ class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 			for (Collection<ContainerRequest> requestCollection : requestCollections) {
 				request = requestCollection.iterator().next();
 				// compare capabilities for exact match
+				int sizeToleranceMB = 0;
+				if (Math.abs(request.getCapability().getMemory() - container.getResource().getMemory()) <= sizeToleranceMB)
 					break;
 			}
 
@@ -172,31 +174,39 @@ class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 	/** Offers free containers to the scheduler to receive tasks to run in the container.
 	 * Called after having received containers in {@link #onContainersAllocated(List)} and completed containers in {@link #onContainersCompleted(List)}.*/
 	private void launchTasks() {
-		while (!containerQueue.isEmpty() && !am.getScheduler().nothingToSchedule()) {
 
-			Container allocatedContainer = containerQueue.remove();
+		if (!containerQueue.isEmpty() && !am.getScheduler().nothingToSchedule()) {
 
 			/* acc */ long tic = System.currentTimeMillis();
 
 			// ask scheduler for a task to run in this container
-			TaskInstance task = am.getScheduler().scheduleTaskToContainer(allocatedContainer);
+//			TaskInstance task = am.getScheduler().scheduleTaskToContainer(allocatedContainer);
+			Map<Container, TaskInstance> assignments = am.getScheduler().scheduleTaskstoContainers(Lists.newArrayList(containerQueue));
+
+			// remove those containers that have been assigned tasks
+			containerQueue.removeAll(assignments.keySet());
 
 			/* acc */ long toc = System.currentTimeMillis();
 
-			/* log */ if (task.getTries() == 1) addTaskRuntimeToTaskReport(allocatedContainer, tic, task, toc);
+			for(Map.Entry<Container, TaskInstance> assignment : assignments.entrySet()){
+				Container allocatedContainer = assignment.getKey();
+				TaskInstance task = assignment.getValue();
 
-			// launch and start the container on a separate thread to keep the main thread unblocked and parallelize the overhead
-			LaunchContainerRunnable runnableLaunchContainer = new LaunchContainerRunnable(allocatedContainer, am.getContainerListener(), task, am);
-			Thread launchThread = new Thread(runnableLaunchContainer);
-			am.getLaunchThreads().add(launchThread);
-			launchThread.start();
+				/* log */ if (task.getTries() == 1) addTaskRuntimeToTaskReport(allocatedContainer, tic, task, toc);
 
-			// remember what went where
-			containerIdToInvocation.put(allocatedContainer.getId(), new HiWayInvocation(task));
-			am.taskInstanceByContainer.putIfAbsent(allocatedContainer, task);
-			containerIdToRunnable.put(allocatedContainer.getId(), runnableLaunchContainer);
+				// launch and start the container on a separate thread to keep the main thread unblocked and parallelize the overhead
+				LaunchContainerRunnable runnableLaunchContainer = am.launchContainer(allocatedContainer, task);
+
+				// remember what went where
+				containerIdToInvocation.put(allocatedContainer.getId(), new HiWayInvocation(task));
+				am.taskInstanceByContainer.putIfAbsent(allocatedContainer, task);
+				containerIdToRunnable.put(allocatedContainer.getId(), runnableLaunchContainer);
+
+			}
+
 		}
 	}
+
 
 	/** Inform the application master about the task's outcome, release surplus containers (e.g., for speculative copies) */
 	private void finalizeRequestedContainer(ContainerStatus containerStatus, int exitStatus, ContainerId containerId) {

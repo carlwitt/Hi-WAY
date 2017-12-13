@@ -13,17 +13,12 @@
  ******************************************************************************/
 package de.huberlin.wbi.hiway.scheduler;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.Map;
-import java.util.Queue;
-import java.util.Set;
+import java.util.*;
 
+import de.huberlin.hiwaydb.dal.Task;
 import de.huberlin.wbi.hiway.am.WorkflowDriver;
 import de.huberlin.wbi.hiway.monitoring.Estimate;
+import de.huberlin.wbi.hiway.monitoring.ProvenanceManager;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.yarn.api.records.Container;
 import org.apache.hadoop.yarn.api.records.ContainerId;
@@ -70,7 +65,7 @@ public abstract class WorkflowScheduler {
 	private int numberOfFinishedTasks = 0;
 	private int numberOfPreviousRunTasks = 0;
 	/** Takes care of logging and parsing old logs. */
-	protected final de.huberlin.wbi.hiway.monitoring.ProvenanceManager provenanceManager = new de.huberlin.wbi.hiway.monitoring.ProvenanceManager(this);
+	protected final ProvenanceManager provenanceManager = new ProvenanceManager(this);
 
 	protected WorkflowScheduler(String workflowName) {
 		this.workflowName = workflowName;
@@ -98,6 +93,25 @@ public abstract class WorkflowScheduler {
 		for (TaskInstance task : tasks) {
 			addTask(task);
 		}
+	}
+
+	/**
+	 * Selects ready tasks to launch in the YARN resource containers.
+	 * This is a default implementation to stay backwards compatible -- tasks used to be scheduled for each container sequentially (since they were all identical anyways),
+	 * but giving the scheduler access to all containers at once allows for better assignments.
+	 * So this method is expected to be overriden by the new schedulers, e.g., to sort the containers by size.
+	 * @param allocatedContainers The containers granted by the YARN Resource Manager to this YARN application.
+	 * @return A map containing those
+	 */
+	public Map<Container, TaskInstance> scheduleTaskstoContainers(List<Container> allocatedContainers){
+		Map<Container, TaskInstance> result = new HashMap<>();
+		for(Container container : allocatedContainers){
+			// get select a container by falling back to the old one-by-one scheduleTaskToContainer method
+			TaskInstance task = scheduleTaskToContainer(container);
+			// add only entries for those containers the scheduler wants to use
+			if(task != null) result.put(container, task);
+		}
+		return result;
 	}
 
 	/** Offer a YARN resource container to the scheduler to get a task back to run in the container. */
