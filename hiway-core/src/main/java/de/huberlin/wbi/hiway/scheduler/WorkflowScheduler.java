@@ -103,7 +103,7 @@ public abstract class WorkflowScheduler {
 	 * @param allocatedContainers The containers granted by the YARN Resource Manager to this YARN application.
 	 * @return A map containing those
 	 */
-	public Map<Container, TaskInstance> scheduleTaskstoContainers(List<Container> allocatedContainers){
+	public Map<Container, TaskInstance> scheduleTasksToContainers(Collection<Container> allocatedContainers){
 		Map<Container, TaskInstance> result = new HashMap<>();
 		for(Container container : allocatedContainers){
 			// get select a container by falling back to the old one-by-one scheduleTaskToContainer method

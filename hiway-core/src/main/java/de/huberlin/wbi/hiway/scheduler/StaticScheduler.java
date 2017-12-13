@@ -45,7 +45,7 @@ import de.huberlin.wbi.hiway.common.HiWayConfiguration;
 import de.huberlin.wbi.hiway.common.TaskInstance;
 
 /**
- * An abstract implementation of a static workflow scheduler (i.e., a scheduler that build a static scheduleTaskstoContainers of which task to assign to which resource prior to
+ * An abstract implementation of a static workflow scheduler (i.e., a scheduler that build a static scheduleTasksToContainers of which task to assign to which resource prior to
  * workflow execution).
  * 
  * @author Marc Bux

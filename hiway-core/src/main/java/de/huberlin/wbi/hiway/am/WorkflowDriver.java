@@ -123,13 +123,15 @@ public abstract class WorkflowDriver {
 	protected WorkflowScheduler scheduler;
 	private HiWayConfiguration.HIWAY_SCHEDULERS schedulerEnumValue;
 	private final Map<String, Integer> customMemoryMap = new HashMap<>();
+	/** The delay between {@link #askForResources()} in the main execution loop {@link #executeWorkflow()}. */
+	public static final int executeWorkflowThrottlingMs = 1000;
 
 	// Resource management
 	/** the memory and number of virtual cores to request for the container on which the workflow tasks are launched */
-	private int containerMemory = 4096;
-	private int maxMem;
-	private int maxCores;
-	private int containerCores = 1;
+	protected int containerMemory = 4096;
+	protected int maxMem;
+	protected int maxCores;
+	protected int containerCores = 1;
 	/** priority of the container request */
 	private int requestPriority;
 
@@ -148,7 +150,7 @@ public abstract class WorkflowDriver {
 	/** A unique id used to identify a run of a workflow. */
 	private final UUID runId;
 	/** the internal id assigned to this application by the YARN ResourceManager */
-	private String appId;
+	protected String appId;
 	/** flags denoting workflow execution has finished and been successful */
 	private volatile boolean done;
 	private volatile boolean success;
@@ -382,7 +384,7 @@ public abstract class WorkflowDriver {
 	 * Calls the abstract {@link #parseWorkflow()}, then {@link #executeWorkflow()} and finally {@link #finish()}.
 	 * @return True if there were no errors
 	 */
-	private boolean run() throws IOException {
+	protected boolean run() throws IOException {
 		/* log */ Logger.writeToStdout("Starting ApplicationMaster");
 
 		Credentials credentials = UserGroupInformation.getCurrentUser().getCredentials();
@@ -519,7 +521,7 @@ public abstract class WorkflowDriver {
 		while (!isDone()) {
             askForResources();
 			try {
-				Thread.sleep(100);
+				Thread.sleep(executeWorkflowThrottlingMs);
 			} catch (InterruptedException e) {
 				e.printStackTrace();
 			}
@@ -818,7 +820,7 @@ public abstract class WorkflowDriver {
 		return runId;
 	}
 
-	protected boolean isDone() {
+	public boolean isDone() {
 		return done;
 	}
 
@@ -867,7 +869,7 @@ public abstract class WorkflowDriver {
 		private final WorkflowDriver workflowDriver;
 		/** the report, in which provenance information is stored */
 		Data federatedReport;
-		BufferedWriter statLog;
+		public BufferedWriter statLog;
 		/** Format for logging. */
 		static final SimpleDateFormat dateFormat = new SimpleDateFormat("yy/MM/dd HH:mm:ss");
 		/** a counter for allocated containers */

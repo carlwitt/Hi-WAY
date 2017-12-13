@@ -31,7 +31,7 @@ import de.huberlin.wbi.hiway.common.TaskInstance;
 /**
  * Receives messages about allocated and completed containers, node updates, reports workflow execution progress to the web interface.
  */
-class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
+public class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 
 	private final WorkflowDriver am;
 	/** a data structure storing the invocation launched by each container **/
@@ -42,7 +42,7 @@ class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 	/** a queue for allocated containers that have yet to be assigned a task **/
 	private final Queue<Container> containerQueue = new LinkedList<>();
 
-	RMCallbackHandler(WorkflowDriver am) {
+	public RMCallbackHandler(WorkflowDriver am) {
 		super();
 		this.am = am;
 	}
@@ -181,7 +181,7 @@ class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 
 			// ask scheduler for a task to run in this container
 //			TaskInstance task = am.getScheduler().scheduleTaskToContainer(allocatedContainer);
-			Map<Container, TaskInstance> assignments = am.getScheduler().scheduleTaskstoContainers(Lists.newArrayList(containerQueue));
+			Map<Container, TaskInstance> assignments = am.getScheduler().scheduleTasksToContainers(containerQueue);
 
 			// remove those containers that have been assigned tasks
 			containerQueue.removeAll(assignments.keySet());

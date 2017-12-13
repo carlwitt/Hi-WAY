@@ -90,7 +90,7 @@ public class HEFT extends StaticScheduler {
 		numberOfRemainingTasks++;
 		Collection<String> nodes = provenanceManager.runtimeEstimatesPerNode.keySet();
 
-		// the readytime of a task is the time from workflow onset after which this task will be ready (according to the scheduleTaskstoContainers)
+		// the readytime of a task is the time from workflow onset after which this task will be ready (according to the scheduleTasksToContainers)
 		// if the task is an input task, its ready time will still be 0
 		// otherwise, its readytime will have been set already as all predecessor tasks have a higher upward rank will have been scheduled already (during which
 		// this task's readytime was updated)
@@ -253,7 +253,7 @@ public class HEFT extends StaticScheduler {
 		// Phase 1: Task Prioritizing (sort by decreasing order of rank)
 		Collections.sort(taskList, new UpwardsRankComparator());
 
-		// Phase 2: Processor Selection; scheduleTaskstoContainers tasks w/ higher rank (critical tasks at the beginning of the wf) first
+		// Phase 2: Processor Selection; scheduleTasksToContainers tasks w/ higher rank (critical tasks at the beginning of the wf) first
 		for (TaskInstance task : taskList) {
 			addTask(task);
 		}
