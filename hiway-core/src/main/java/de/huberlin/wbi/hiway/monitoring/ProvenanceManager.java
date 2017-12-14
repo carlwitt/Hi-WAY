@@ -98,7 +98,8 @@ public class ProvenanceManager {
                 break;
             default:
                 dbInterface = new de.huberlin.wbi.hiway.common.ProvenanceManager();
-                parseLogs();
+                // TODO re-enable for HEFT
+//                parseLogs();
         }
     }
 
