@@ -33,14 +33,14 @@ import de.huberlin.wbi.hiway.common.TaskInstance;
  */
 public class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 
-	private final WorkflowDriver am;
+	protected final WorkflowDriver am;
 	/** a data structure storing the invocation launched by each container **/
-	private final Map<ContainerId, HiWayInvocation> containerIdToInvocation = new HashMap<>();
+	protected final Map<ContainerId, HiWayInvocation> containerIdToInvocation = new HashMap<>();
 	/** Keep a reference to the runnable that started the container to stop it polling cadvisor stats. */
-	private final Map<ContainerId, LaunchContainerRunnable> containerIdToRunnable = new ConcurrentHashMap<>();
+	protected final Map<ContainerId, LaunchContainerRunnable> containerIdToRunnable = new ConcurrentHashMap<>();
 
 	/** a queue for allocated containers that have yet to be assigned a task **/
-	private final Queue<Container> containerQueue = new LinkedList<>();
+	protected final Queue<Container> containerQueue = new LinkedList<>();
 
 	public RMCallbackHandler(WorkflowDriver am) {
 		super();
@@ -173,7 +173,7 @@ public class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
 
 	/** Offers free containers to the scheduler to receive tasks to run in the container.
 	 * Called after having received containers in {@link #onContainersAllocated(List)} and completed containers in {@link #onContainersCompleted(List)}.*/
-	private void launchTasks() {
+	protected void launchTasks() {
 
 		if (!containerQueue.isEmpty() && !am.getScheduler().nothingToSchedule()) {
 
@@ -269,7 +269,7 @@ public class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
         }
 	}
 
-	private void addTaskRuntimeToTaskReport(Container allocatedContainer, long tic, TaskInstance task, long toc) {
+	protected void addTaskRuntimeToTaskReport(Container allocatedContainer, long tic, TaskInstance task, long toc) {
 		JSONObject obj = new JSONObject();
 		try {
 			obj.put(JsonReportEntry.LABEL_REALTIME, Long.toString(toc - tic));

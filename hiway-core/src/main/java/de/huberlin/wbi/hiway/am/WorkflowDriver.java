@@ -137,14 +137,16 @@ public abstract class WorkflowDriver {
 
 	// Application Master self-management
 	private final HiWayConfiguration conf;
+
 	/** Remembers the mapping to subsequently retrieve task information when being informed about containers, e.g., in {@link NMCallbackHandler#onContainerStatusReceived(ContainerId, ContainerStatus)}*/
 	final ConcurrentMap<Container, TaskInstance> taskInstanceByContainer = new ConcurrentHashMap<>();
+
 	/** a list of threads, one for each container launch, to make container launching non-blocking */
     private final List<Thread> launchThreads = new ArrayList<>();
 	/** ??? */
     protected final Map<String, Data> files = new HashMap<>();
-
 	// Execution logic
+
 	private Data workflowFile;
 	private Path workflowPath;
 	/** A unique id used to identify a run of a workflow. */
@@ -160,13 +162,12 @@ public abstract class WorkflowDriver {
 	private final Map<String, String> shellEnv = new HashMap<>();
 	/** Don't know what it does, but it is passed to the ContainerLaunchContext in {@link LaunchContainerRunnable} as --size */
 	private boolean determineFileSizes = false;
-
 	// Reporting
+
 	private Path summaryPath;
 	protected final Logger logger = new Logger(this);
 	/** This is used to publish workflow progress information during execution. */
 	private TimelineClient timelineClient;
-
 	protected WorkflowDriver() {
 		conf = new HiWayConfiguration();
 		try {
@@ -866,6 +867,7 @@ public abstract class WorkflowDriver {
 	 * Fields and methods concerned with logging and reporting.
 	 */
 	public static class Logger {
+
 		private final WorkflowDriver workflowDriver;
 		/** the report, in which provenance information is stored */
 		Data federatedReport;
@@ -884,7 +886,6 @@ public abstract class WorkflowDriver {
 		public final AtomicInteger numRequestedContainers = new AtomicInteger();
 		/** a counter for the total allocated memory */
 		public final AtomicLong totalContainerMemoryMB = new AtomicLong(0);
-
 		public Logger(WorkflowDriver workflowDriver) {
 			this.workflowDriver = workflowDriver;
 		}
@@ -1110,5 +1111,10 @@ public abstract class WorkflowDriver {
 			}
 			workflowDriver.timelineWrite(workflowDriver.getWorkflowName(),sb.toString());
 		}
+
 	}
+	public ConcurrentMap<Container, TaskInstance> getTaskInstanceByContainer() {
+		return taskInstanceByContainer;
+	}
+
 }

@@ -65,7 +65,7 @@ public class DaxApplicationMaster extends WorkflowDriver {
 		WorkflowDriver.launch(new DaxApplicationMaster(), args);
 	}
 
-    private DaxApplicationMaster() {
+    protected DaxApplicationMaster() {
         super();
         setDetermineFileSizes();
     }
